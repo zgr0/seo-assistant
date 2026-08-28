@@ -39,6 +39,14 @@ ScaffoldingReadMe.txt
 # dotenv environment variables file
 .env
 
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.userprefs
+*.DotSettings.user
+
 # Others
 ~$*
 *~
@@ -55,3 +63,18 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Node / Vite (SeoCopilot.Web)
+node_modules/
+dist/
+*.local
+.vite/
+
+# Playwright
+.playwright/
+playwright-report/
+test-results/
+
+# Local secrets (use dotnet user-secrets, not appsettings)
+appsettings.*.Local.json
+secrets.json

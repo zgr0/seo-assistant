@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SeoCopilot.Api/SeoCopilot.Api.csproj" />
+    <Project Path="src/SeoCopilot.Application/SeoCopilot.Application.csproj" />
+    <Project Path="src/SeoCopilot.Crawler/SeoCopilot.Crawler.csproj" />
+    <Project Path="src/SeoCopilot.Domain/SeoCopilot.Domain.csproj" />
+    <Project Path="src/SeoCopilot.Infrastructure/SeoCopilot.Infrastructure.csproj" />
+    <Project Path="src/SeoCopilot.Rules/SeoCopilot.Rules.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SeoCopilot.Api.Tests/SeoCopilot.Api.Tests.csproj" />
+    <Project Path="tests/SeoCopilot.Rules.Tests/SeoCopilot.Rules.Tests.csproj" />
+  </Folder>
+</Solution>
