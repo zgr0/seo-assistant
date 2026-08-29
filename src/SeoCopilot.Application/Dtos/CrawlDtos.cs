@@ -1,35 +1,44 @@
-using SeoCopilot.Domain.Entities;
+using SeoCopilot.Domain.Entities.Crawling;
 
 namespace SeoCopilot.Application.Dtos;
 
-public record StartCrawlRequest(string Url, string OwnerEmail);
+public record StartCrawlRequest(Guid SiteId);
 
-public record StartCrawlResponse(Guid SiteId, Guid CrawlId);
+public record StartCrawlResponse(Guid CrawlId);
 
 public record CrawlSummaryDto(
     Guid CrawlId,
+    Guid SiteId,
     string Status,
-    int Score,
-    DateTimeOffset StartedAt,
+    decimal? OverallScore,
+    int PagesCrawled,
+    DateTimeOffset? StartedAt,
     DateTimeOffset? FinishedAt,
-    IReadOnlyList<PageDto> Pages)
+    IReadOnlyDictionary<string, int> IssueCounts,
+    IReadOnlyList<IssueDto> Issues)
 {
     public static CrawlSummaryDto From(Crawl c) => new(
         c.Id,
+        c.SiteId,
         c.Status.ToString(),
-        c.Score,
+        c.OverallScore,
+        c.PagesCrawled,
         c.StartedAt,
         c.FinishedAt,
-        c.Pages.Select(PageDto.From).ToList());
+        c.IssueCounts,
+        c.Issues.Select(i => new IssueDto(
+            i.RuleCode,
+            i.Severity.ToString(),
+            i.Weight,
+            i.Status.ToString(),
+            i.Evidence.Found,
+            i.Evidence.Expected)).ToList());
 }
 
-public record PageDto(string Url, int StatusCode, string? Title, IReadOnlyList<FindingDto> Findings)
-{
-    public static PageDto From(Page p) => new(
-        p.Url,
-        p.StatusCode,
-        p.Title,
-        p.Findings.Select(f => new FindingDto(f.RuleCode, f.Severity.ToString(), f.Message)).ToList());
-}
-
-public record FindingDto(string RuleCode, string Severity, string Message);
+public record IssueDto(
+    string RuleCode,
+    string Severity,
+    int Weight,
+    string Status,
+    string? Found,
+    string? Expected);

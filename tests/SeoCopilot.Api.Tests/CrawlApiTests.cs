@@ -27,7 +27,7 @@ public class CrawlApiTests(PostgresFixture fixture) : IClassFixture<PostgresFixt
         await using var factory = fixture.CreateFactory();
         var client = factory.CreateClient();
 
-        var res = await client.PostAsJsonAsync("/api/crawls", new { url = "https://example.com", ownerEmail = "a@b.com" });
+        var res = await client.PostAsJsonAsync("/api/crawls", new { siteId = Guid.NewGuid() });
 
         Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
     }

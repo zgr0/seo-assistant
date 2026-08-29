@@ -12,8 +12,11 @@ public static class DependencyInjection
 {
     public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration config)
     {
-        services.AddDbContext<SeoCopilotDbContext>(o =>
-            o.UseNpgsql(config.GetConnectionString("Postgres")));
+        services.AddDbContext<SeoCopilotDbContext>(o => o
+            .UseNpgsql(
+                config.GetConnectionString("Postgres"),
+                npg => npg.MigrationsAssembly(typeof(SeoCopilotDbContext).Assembly.FullName))
+            .UseSnakeCaseNamingConvention());
 
         services.AddScoped<ISiteRepository, SiteRepository>();
 

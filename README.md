@@ -55,6 +55,44 @@ Playwright tarayicisi (Crawler icin bir kez):
 pwsh src/SeoCopilot.Crawler/bin/Debug/net10.0/playwright.ps1 install chromium
 ```
 
+## Veritabani
+
+PostgreSQL, EF Core code-first. Snake_case kolon/tablo adlari (`EFCore.NamingConventions`).
+Enum'lar `snake_case` metin olarak saklanir (`SnakeCaseEnumConverter`).
+
+### Tablolar
+
+| Grup | Tablolar |
+| --- | --- |
+| Kiraci & kullanici | `tenants`, `users` (citext email), `refresh_tokens` |
+| Site | `sites` (`crawl_settings` jsonb) |
+| Tarama | `crawls` (`category_scores`/`issue_counts`/`scoring_snapshot` jsonb), `pages` (`url_hash` bytea, `h1_texts` text[]), `page_links` |
+| Kural motoru | `rules` (SEED), `issues` (`evidence` jsonb), `issue_ignores` |
+| Performans | `vitals` |
+| Marka & icerik | `brand_profiles`, `platform_profiles` (SEED), `content_jobs`, `content_variants` |
+| Rapor & sistem | `reports`, `audit_logs` (`ip` inet, `payload` jsonb) |
+
+Entity siniflari: [src/SeoCopilot.Domain/Entities](src/SeoCopilot.Domain/Entities) (alt klasorlere ayrilmis).
+EF yapilandirmasi: [src/SeoCopilot.Infrastructure/Persistence](src/SeoCopilot.Infrastructure/Persistence).
+
+### Migration
+
+`InitialCreate` uretildi ([Persistence/Migrations](src/SeoCopilot.Infrastructure/Persistence/Migrations)).
+Uygulamak icin Postgres calisir olmali:
+
+```bash
+dotnet ef database update -p src/SeoCopilot.Infrastructure -s src/SeoCopilot.Api
+```
+
+Baglanti dizesi: `SEOCOPILOT_DB` ortam degiskeni (tasarim zamani) veya `ConnectionStrings:Postgres` (calisma zamani).
+`citext` uzantisi ilk migration'da olusturulur — DB rolunun `CREATE EXTENSION` yetkisi olmali.
+
+Yeni migration:
+
+```bash
+dotnet ef migrations add <Ad> -p src/SeoCopilot.Infrastructure -s src/SeoCopilot.Api -o Persistence/Migrations
+```
+
 ## Test
 
 ```bash

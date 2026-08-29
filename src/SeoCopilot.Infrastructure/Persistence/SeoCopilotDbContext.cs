@@ -1,47 +1,69 @@
 using Microsoft.EntityFrameworkCore;
-using SeoCopilot.Domain.Entities;
+using SeoCopilot.Domain.Entities.Content;
+using SeoCopilot.Domain.Entities.Crawling;
+using SeoCopilot.Domain.Entities.Performance;
+using SeoCopilot.Domain.Entities.Reporting;
+using SeoCopilot.Domain.Entities.Rules;
+using SeoCopilot.Domain.Entities.Sites;
+using SeoCopilot.Domain.Entities.System;
+using SeoCopilot.Domain.Entities.Tenancy;
+using SeoCopilot.Domain.Enums;
+using SeoCopilot.Infrastructure.Persistence.Conventions;
 
 namespace SeoCopilot.Infrastructure.Persistence;
 
 public sealed class SeoCopilotDbContext(DbContextOptions<SeoCopilotDbContext> options) : DbContext(options)
 {
+    // Kiraci & kullanici
+    public DbSet<Tenant> Tenants => Set<Tenant>();
+    public DbSet<User> Users => Set<User>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+
+    // Site & tarama
     public DbSet<Site> Sites => Set<Site>();
     public DbSet<Crawl> Crawls => Set<Crawl>();
     public DbSet<Page> Pages => Set<Page>();
-    public DbSet<Finding> Findings => Set<Finding>();
+    public DbSet<PageLink> PageLinks => Set<PageLink>();
 
-    protected override void OnModelCreating(ModelBuilder b)
+    // Kural motoru
+    public DbSet<Rule> Rules => Set<Rule>();
+    public DbSet<Issue> Issues => Set<Issue>();
+    public DbSet<IssueIgnore> IssueIgnores => Set<IssueIgnore>();
+
+    // Performans
+    public DbSet<Vital> Vitals => Set<Vital>();
+
+    // Marka & icerik
+    public DbSet<BrandProfile> BrandProfiles => Set<BrandProfile>();
+    public DbSet<PlatformProfile> PlatformProfiles => Set<PlatformProfile>();
+    public DbSet<ContentJob> ContentJobs => Set<ContentJob>();
+    public DbSet<ContentVariant> ContentVariants => Set<ContentVariant>();
+
+    // Rapor & sistem
+    public DbSet<Report> Reports => Set<Report>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
+    private static readonly Type[] EnumTypes =
+    [
+        typeof(TenantPlan), typeof(UserRole), typeof(VerificationMethod), typeof(CrawlStatus),
+        typeof(CrawlTrigger), typeof(RuleCategory), typeof(Severity), typeof(IssueStatus),
+        typeof(VitalsDevice), typeof(VitalsSource), typeof(BrandTone), typeof(AddressForm),
+        typeof(EmojiUsage), typeof(ContentJobType), typeof(ContentJobStatus), typeof(ReportStatus)
+    ];
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
-        b.Entity<Site>(e =>
+        foreach (var enumType in EnumTypes)
         {
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Url).HasMaxLength(2048).IsRequired();
-            e.Property(x => x.OwnerEmail).HasMaxLength(320).IsRequired();
-            e.HasMany(x => x.Crawls).WithOne().HasForeignKey(c => c.SiteId);
-        });
+            configurationBuilder.Properties(enumType)
+                .HaveConversion(typeof(SnakeCaseEnumConverter<>).MakeGenericType(enumType))
+                .HaveMaxLength(32);
+        }
+    }
 
-        b.Entity<Crawl>(e =>
-        {
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
-            e.HasMany(x => x.Pages).WithOne().HasForeignKey(p => p.CrawlId);
-        });
-
-        b.Entity<Page>(e =>
-        {
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Url).HasMaxLength(2048).IsRequired();
-            e.Property(x => x.Title).HasMaxLength(1024);
-            e.Property(x => x.MetaDescription).HasMaxLength(2048);
-            e.HasMany(x => x.Findings).WithOne().HasForeignKey(f => f.PageId);
-        });
-
-        b.Entity<Finding>(e =>
-        {
-            e.HasKey(x => x.Id);
-            e.Property(x => x.RuleCode).HasMaxLength(64).IsRequired();
-            e.Property(x => x.Severity).HasConversion<string>().HasMaxLength(20);
-            e.Property(x => x.Message).HasMaxLength(1024);
-        });
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
+    {
+        modelBuilder.HasPostgresExtension("citext");
+        modelBuilder.ApplyConfigurationsFromAssembly(typeof(SeoCopilotDbContext).Assembly);
     }
 }
