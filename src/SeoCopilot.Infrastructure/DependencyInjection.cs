@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using SeoCopilot.Application.Abstractions;
+using SeoCopilot.Infrastructure.Auth;
 using SeoCopilot.Infrastructure.Clients;
 using SeoCopilot.Infrastructure.Email;
 using SeoCopilot.Infrastructure.Persistence;
@@ -19,6 +20,11 @@ public static class DependencyInjection
             .UseSnakeCaseNamingConvention());
 
         services.AddScoped<ISiteRepository, SiteRepository>();
+        services.AddScoped<IUserRepository, UserRepository>();
+
+        services.Configure<JwtOptions>(config.GetSection(JwtOptions.Section));
+        services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
+        services.AddSingleton<ITokenService, JwtTokenService>();
 
         services.Configure<AnthropicOptions>(config.GetSection(AnthropicOptions.Section));
         services.Configure<PsiOptions>(config.GetSection(PsiOptions.Section));

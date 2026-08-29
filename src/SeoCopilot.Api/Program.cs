@@ -2,6 +2,7 @@ using System.Text;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using SeoCopilot.Api.Adapters;
 using SeoCopilot.Api.Endpoints;
@@ -10,17 +11,20 @@ using SeoCopilot.Application;
 using SeoCopilot.Application.Abstractions;
 using SeoCopilot.Crawler;
 using SeoCopilot.Infrastructure;
+using SeoCopilot.Infrastructure.Auth;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.AddProblemDetails();
+builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 
 // --- Katmanlar ---
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddCrawler();
 
-// Rules koprüsü + kuyruk
+// Rules koprusu + kuyruk
 builder.Services.AddSingleton<IRuleRunner, RuleRunnerAdapter>();
 builder.Services.AddScoped<ICrawlQueue, HangfireCrawlQueue>();
 
@@ -33,24 +37,33 @@ builder.Services.AddHangfire(cfg => cfg
 builder.Services.AddHangfireServer();
 
 // --- Auth ---
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "dev-only-insecure-key-change-me-please-32b";
+var jwt = builder.Configuration.GetSection(JwtOptions.Section).Get<JwtOptions>() ?? new JwtOptions();
+if (string.IsNullOrWhiteSpace(jwt.Key) || Encoding.UTF8.GetByteCount(jwt.Key) < 32)
+    throw new InvalidOperationException("Jwt:Key en az 32 bayt olmali");
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
+        options.MapInboundClaims = false;
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"] ?? "seocopilot",
-            ValidAudience = builder.Configuration["Jwt:Audience"] ?? "seocopilot",
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey))
+            ValidIssuer = jwt.Issuer,
+            ValidAudience = jwt.Audience,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwt.Key)),
+            ClockSkew = TimeSpan.FromSeconds(30),
+            NameClaimType = JwtRegisteredClaimNames.Sub,
+            RoleClaimType = "role"
         };
     });
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+
+app.UseExceptionHandler();
 
 if (app.Environment.IsDevelopment())
     app.MapOpenApi();
@@ -65,6 +78,7 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
 });
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
+app.MapAuthEndpoints();
 app.MapCrawlEndpoints();
 
 app.Run();

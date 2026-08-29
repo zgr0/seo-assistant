@@ -697,6 +697,12 @@ namespace SeoCopilot.Infrastructure.Persistence.Migrations
                 unique: true);
 
             migrationBuilder.CreateIndex(
+                name: "ix_refresh_tokens_token_hash",
+                table: "refresh_tokens",
+                column: "token_hash",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
                 name: "ix_refresh_tokens_user_id_expires_at",
                 table: "refresh_tokens",
                 columns: new[] { "user_id", "expires_at" });

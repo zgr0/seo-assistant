@@ -9,6 +9,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SeoCopilot.Api.Tests/SeoCopilot.Api.Tests.csproj" />
+    <Project Path="tests/SeoCopilot.Auth.Tests/SeoCopilot.Auth.Tests.csproj" />
     <Project Path="tests/SeoCopilot.Rules.Tests/SeoCopilot.Rules.Tests.csproj" />
   </Folder>
 </Solution>

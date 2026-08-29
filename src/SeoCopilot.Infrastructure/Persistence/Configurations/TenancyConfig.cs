@@ -46,6 +46,7 @@ internal sealed class RefreshTokenConfig : IEntityTypeConfiguration<RefreshToken
         b.Property(x => x.TokenHash).IsRequired();
         b.Ignore(x => x.IsActive);
         b.HasIndex(x => new { x.UserId, x.ExpiresAt });
+        b.HasIndex(x => x.TokenHash).IsUnique();
 
         b.HasOne(x => x.User).WithMany(u => u.RefreshTokens)
             .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);

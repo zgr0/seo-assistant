@@ -1,11 +1,14 @@
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using SeoCopilot.Infrastructure.Persistence;
 using Testcontainers.PostgreSql;
 
 namespace SeoCopilot.Api.Tests;
 
-/// <summary>Test sinifi omru boyunca tek bir Postgres konteyneri.</summary>
+/// <summary>Test sinifi omru boyunca tek bir Postgres konteyneri; sema migration ile kurulur.</summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
     private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
@@ -16,12 +19,18 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public string ConnectionString => _container.GetConnectionString();
 
-    public Task InitializeAsync() => _container.StartAsync();
+    public async Task InitializeAsync()
+    {
+        await _container.StartAsync();
+
+        using var factory = CreateFactory();
+        using var scope = factory.Services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<SeoCopilotDbContext>().Database.MigrateAsync();
+    }
 
     public Task DisposeAsync() => _container.DisposeAsync().AsTask();
 
-    public WebApplicationFactory<Program> CreateFactory() =>
-        new CustomFactory(ConnectionString);
+    public WebApplicationFactory<Program> CreateFactory() => new CustomFactory(ConnectionString);
 
     private sealed class CustomFactory(string connectionString) : WebApplicationFactory<Program>
     {

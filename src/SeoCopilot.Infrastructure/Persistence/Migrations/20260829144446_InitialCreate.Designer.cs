@@ -14,7 +14,7 @@ using SeoCopilot.Infrastructure.Persistence;
 namespace SeoCopilot.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(SeoCopilotDbContext))]
-    [Migration("20260829073025_InitialCreate")]
+    [Migration("20260829144446_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -1312,6 +1312,10 @@ namespace SeoCopilot.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_refresh_tokens");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_refresh_tokens_token_hash");
 
                     b.HasIndex("UserId", "ExpiresAt")
                         .HasDatabaseName("ix_refresh_tokens_user_id_expires_at");

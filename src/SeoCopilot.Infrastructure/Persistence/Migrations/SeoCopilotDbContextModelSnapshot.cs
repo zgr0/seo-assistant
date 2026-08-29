@@ -1310,6 +1310,10 @@ namespace SeoCopilot.Infrastructure.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_refresh_tokens");
 
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_refresh_tokens_token_hash");
+
                     b.HasIndex("UserId", "ExpiresAt")
                         .HasDatabaseName("ix_refresh_tokens_user_id_expires_at");
 

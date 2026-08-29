@@ -55,6 +55,25 @@ Playwright tarayicisi (Crawler icin bir kez):
 pwsh src/SeoCopilot.Crawler/bin/Debug/net10.0/playwright.ps1 install chromium
 ```
 
+## Auth
+
+JWT bearer + rotasyonlu refresh token. Sifreler **bcrypt** (work factor 12).
+
+| Endpoint | Aciklama |
+| --- | --- |
+| `POST /api/auth/register` | `{email,password,fullName,tenantName}` → yeni trial tenant + owner user, token cifti |
+| `POST /api/auth/login` | `{email,password}` → token cifti |
+| `POST /api/auth/refresh` | `{refreshToken}` → eski token iptal, yeni cift (rotasyon) |
+| `POST /api/auth/logout` | `{refreshToken}` → refresh token iptal |
+
+Access token: `sub`, `email`, `name`, `tenant_id`, `role` claim'leri; varsayilan 15 dk.
+Refresh token: istemciye ham deger, DB'de yalniz `sha256` hash (`refresh_tokens.token_hash`), 30 gun.
+E-posta kayitta global benzersiz kabul edilir (DB kisiti `unique(tenant_id,email)`).
+
+Korumali endpoint ornegi: `Authorization: Bearer <accessToken>` → `POST /api/crawls`.
+
+Ayarlar (`appsettings.json` → `Jwt`): `Key` (>=32 bayt, prod'da user-secrets), `Issuer`, `Audience`, `AccessTokenMinutes`, `RefreshTokenDays`.
+
 ## Veritabani
 
 PostgreSQL, EF Core code-first. Snake_case kolon/tablo adlari (`EFCore.NamingConventions`).
