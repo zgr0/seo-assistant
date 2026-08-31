@@ -1,36 +1,141 @@
-using AngleSharp;
+using System.Diagnostics;
+using System.Net;
+using System.Text;
+using Microsoft.Extensions.Options;
 using SeoCopilot.Application.Abstractions;
 
 namespace SeoCopilot.Crawler;
 
 /// <summary>
-/// Playwright ile sayfayi render eder (JS dahil), sonra AngleSharp ile DOM'u ayristirir.
-/// Şimdilik render adimi HttpClient fallback ile stub — Playwright entegrasyonu <see cref="PlaywrightBrowserPool"/>.
+/// Sayfayi getirir ve <see cref="HtmlAnalyzer"/> ile ayristirir.
+/// RenderJs kapaliysa HttpClient, aciksa Playwright (JS calistirilir).
+/// Yonlendirmeler elle izlenir: durum kodu zincirin sonundaki yanittan, RedirectTo ise
+/// yonlendirme olduysa varilan adresten gelir — boylece http→https gibi zincirler
+/// HTTP_STATUS kuralini tetiklemez ama kayitta gorunur.
 /// </summary>
-public sealed class PageExtractor(HttpClient http) : IPageExtractor
+public sealed class PageExtractor(
+    HttpClient http,
+    PlaywrightBrowserPool browsers,
+    IOptions<CrawlerOptions> options) : IPageExtractor
 {
-    public async Task<ExtractedPage> ExtractAsync(string url, CancellationToken ct = default)
+    private readonly CrawlerOptions _options = options.Value;
+    private readonly HtmlAnalyzer _analyzer = new(options.Value.MaxMainTextChars);
+
+    public Task<ExtractedPage> ExtractAsync(Uri url, PageFetchOptions fetch, CancellationToken ct = default) =>
+        fetch.RenderJs
+            ? ExtractRenderedAsync(url, fetch, ct)
+            : ExtractHttpAsync(url, fetch, ct);
+
+    private async Task<ExtractedPage> ExtractHttpAsync(Uri url, PageFetchOptions fetch, CancellationToken ct)
     {
-        using var res = await http.GetAsync(url, ct);
-        var status = (int)res.StatusCode;
-        var html = await res.Content.ReadAsStringAsync(ct);
+        var stopwatch = Stopwatch.StartNew();
 
-        var context = BrowsingContext.New(Configuration.Default);
-        var doc = await context.OpenAsync(req => req.Content(html), ct);
+        var current = url;
+        string? redirectTo = null;
+        HttpResponseMessage? response = null;
 
-        var title = doc.QuerySelector("title")?.TextContent?.Trim();
-        var metaDesc = doc.QuerySelector("meta[name=description]")?.GetAttribute("content")?.Trim();
-        var h1 = doc.QuerySelectorAll("h1").Select(e => e.TextContent.Trim()).Where(t => t.Length > 0).ToList();
-        var host = new Uri(url).Host;
-        var links = doc.QuerySelectorAll("a[href]")
-            .Select(a => a.GetAttribute("href")!)
-            .Where(h => h.StartsWith('/') || h.Contains(host, StringComparison.OrdinalIgnoreCase))
-            .Distinct()
-            .ToList();
-        var wordCount = (doc.Body?.TextContent ?? string.Empty)
-            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length;
-        var hasCanonical = doc.QuerySelector("link[rel=canonical]") is not null;
+        try
+        {
+            for (var hop = 0; ; hop++)
+            {
+                response?.Dispose();
+                response = await http.GetAsync(current, HttpCompletionOption.ResponseHeadersRead, ct);
 
-        return new ExtractedPage(url, status, title, metaDesc, h1, links, wordCount, hasCanonical);
+                if (!IsRedirect(response.StatusCode) || hop >= _options.MaxRedirects) break;
+
+                var location = response.Headers.Location;
+                if (location is null) break;
+
+                current = new Uri(current, location);
+                redirectTo = current.AbsoluteUri;
+            }
+
+            var status = (int)response.StatusCode;
+            var contentType = response.Content.Headers.ContentType?.ToString();
+            var xRobots = response.Headers.TryGetValues("X-Robots-Tag", out var values)
+                ? string.Join(", ", values)
+                : null;
+
+            if (!IsParsableHtml(status, contentType))
+            {
+                stopwatch.Stop();
+                return new ExtractedPage
+                {
+                    Url = url.AbsoluteUri,
+                    StatusCode = status,
+                    ContentType = contentType,
+                    RedirectTo = redirectTo,
+                    ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
+                    RobotsMeta = xRobots
+                };
+            }
+
+            var (html, size) = await ReadCappedAsync(response, ct);
+            stopwatch.Stop();
+
+            return await _analyzer.AnalyzeAsync(
+                html, url, fetch.BaseUri, status, contentType, redirectTo,
+                (int)stopwatch.ElapsedMilliseconds, size, xRobots, ct);
+        }
+        finally
+        {
+            response?.Dispose();
+        }
     }
+
+    private async Task<ExtractedPage> ExtractRenderedAsync(Uri url, PageFetchOptions fetch, CancellationToken ct)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var rendered = await browsers.RenderAsync(url, _options.UserAgent, _options.RequestTimeoutSeconds, ct);
+        stopwatch.Stop();
+
+        var redirectTo = rendered.FinalUrl is not null && rendered.FinalUrl != url.AbsoluteUri
+            ? rendered.FinalUrl
+            : null;
+        var size = Encoding.UTF8.GetByteCount(rendered.Html);
+
+        if (!IsParsableHtml(rendered.StatusCode, rendered.ContentType))
+        {
+            return new ExtractedPage
+            {
+                Url = url.AbsoluteUri,
+                StatusCode = rendered.StatusCode,
+                ContentType = rendered.ContentType,
+                RedirectTo = redirectTo,
+                ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
+                HtmlSizeBytes = size,
+                RobotsMeta = rendered.XRobotsTag
+            };
+        }
+
+        return await _analyzer.AnalyzeAsync(
+            rendered.Html, url, fetch.BaseUri, rendered.StatusCode, rendered.ContentType, redirectTo,
+            (int)stopwatch.ElapsedMilliseconds, size, rendered.XRobotsTag, ct);
+    }
+
+    /// <summary>Govdeyi <see cref="CrawlerOptions.MaxHtmlBytes"/> ile sinirli okur.</summary>
+    private async Task<(string Html, int Bytes)> ReadCappedAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        await using var stream = await response.Content.ReadAsStreamAsync(ct);
+        using var buffer = new MemoryStream();
+
+        var chunk = new byte[8192];
+        int read;
+        while (buffer.Length < _options.MaxHtmlBytes
+            && (read = await stream.ReadAsync(chunk, ct)) > 0)
+        {
+            var allowed = (int)Math.Min(read, _options.MaxHtmlBytes - buffer.Length);
+            buffer.Write(chunk, 0, allowed);
+        }
+
+        var bytes = buffer.ToArray();
+        return (Encoding.UTF8.GetString(bytes), bytes.Length);
+    }
+
+    private static bool IsRedirect(HttpStatusCode status) => (int)status is >= 300 and < 400;
+
+    /// <summary>Yalniz 2xx + text/html ayristirilir; hata sayfalarindan link toplanmaz.</summary>
+    private static bool IsParsableHtml(int status, string? contentType) =>
+        status is >= 200 and < 300
+        && contentType?.Contains("html", StringComparison.OrdinalIgnoreCase) == true;
 }

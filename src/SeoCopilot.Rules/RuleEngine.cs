@@ -11,18 +11,23 @@ public sealed class RuleEngine
 {
     private readonly IReadOnlyList<ISeoRule> _rules;
 
-    public RuleEngine(IEnumerable<ISeoRule> rules) => _rules = rules.ToList();
+    public RuleEngine(IEnumerable<ISeoRule> rules) => _rules = [.. rules];
 
-    /// <summary>Varsayilan kural seti ile.</summary>
+    /// <summary>Varsayilan kural seti — kodlar rules tablosu seed'i ile birebir ayni.</summary>
     public static RuleEngine Default() => new(
     [
         new HttpStatusRule(),
-        new TitleMissingRule(),
-        new TitleLengthRule(),
-        new MetaDescriptionRule(),
-        new SingleH1Rule(),
+        new NoIndexRule(),
+        new MetaTitleMissingRule(),
+        new MetaTitleLengthRule(),
+        new MetaDescriptionMissingRule(),
+        new MetaDescriptionLengthRule(),
+        new H1MissingRule(),
+        new H1MultipleRule(),
         new CanonicalRule(),
         new ThinContentRule(),
+        new ImageAltRule(),
+        new StructuredDataRule(),
     ]);
 
     public RuleEvaluation Evaluate(PageInput page)
@@ -32,8 +37,12 @@ public sealed class RuleEngine
         {
             var msg = rule.Evaluate(page);
             if (msg is not null)
-                violations.Add(new RuleViolation(rule.Code, rule.Severity, msg));
+                violations.Add(new RuleViolation(rule.Code, rule.Category, rule.Severity, rule.Weight, msg));
         }
+
+        // Sayfa 2xx donmuyorsa icerik kurallarinin bulgusu gurultu — sadece durum kodunu bildir.
+        if (page.StatusCode is < 200 or >= 300)
+            violations = [.. violations.Where(v => v.Code == "HTTP_STATUS")];
 
         return new RuleEvaluation(ScoreCalculator.Calculate(violations), violations);
     }

@@ -22,7 +22,7 @@ builder.Services.AddExceptionHandler<ApiExceptionHandler>();
 // --- Katmanlar ---
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
-builder.Services.AddCrawler();
+builder.Services.AddCrawler(builder.Configuration);
 
 // Rules koprusu + kuyruk
 builder.Services.AddSingleton<IRuleRunner, RuleRunnerAdapter>();
@@ -79,6 +79,7 @@ app.UseHangfireDashboard("/hangfire", new DashboardOptions
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 app.MapAuthEndpoints();
+app.MapSiteEndpoints();
 app.MapCrawlEndpoints();
 
 app.Run();

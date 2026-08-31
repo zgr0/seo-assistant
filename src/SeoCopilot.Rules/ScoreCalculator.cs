@@ -18,9 +18,68 @@ public static class ScoreCalculator
         _ => 0
     };
 
+    /// <summary>Tek sayfa skoru.</summary>
     public static int Calculate(IEnumerable<RuleViolation> violations)
     {
         var total = violations.Sum(v => PenaltyFor(v.Severity));
         return Math.Clamp(100 - total, 0, 100);
+    }
+
+    /// <summary>
+    /// Crawl geneli skor: sayfa skorlarinin ortalamasi, ardindan crawl seviyesi
+    /// bulgularin cezasi dusulur.
+    /// </summary>
+    public static decimal CalculateOverall(
+        IEnumerable<int> pageScores,
+        IEnumerable<RuleViolation> crawlLevelViolations)
+    {
+        var scores = pageScores as IReadOnlyList<int> ?? [.. pageScores];
+        if (scores.Count == 0) return 0m;
+
+        var average = (decimal)scores.Sum() / scores.Count;
+        var penalty = crawlLevelViolations.Sum(v => PenaltyFor(v.Severity));
+        return Math.Clamp(Math.Round(average - penalty, 2), 0m, 100m);
+    }
+
+    /// <summary>
+    /// Kategori bazli skorlar. Bir kategorinin cezasi tum sayfalara yayilir:
+    /// her sayfada bir Medium meta ihlali varsa meta = 92.
+    /// </summary>
+    public static Dictionary<string, decimal> CalculateCategoryScores(
+        IEnumerable<RuleViolation> allViolations,
+        int pageCount)
+    {
+        var result = new Dictionary<string, decimal>();
+        if (pageCount <= 0) return result;
+
+        foreach (var group in allViolations.GroupBy(v => v.Category))
+        {
+            var penalty = (decimal)group.Sum(v => PenaltyFor(v.Severity)) / pageCount;
+            result[CategoryKey(group.Key)] = Math.Clamp(Math.Round(100m - penalty, 2), 0m, 100m);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Skorlamada kullanilan agirlik tablosu. crawl.scoring_snapshot'a yazilir ki
+    /// ceza puanlari ileride degisse bile gecmis crawl'lar yorumlanabilsin.
+    /// </summary>
+    public static Dictionary<string, int> Snapshot() =>
+        Enum.GetValues<Severity>().ToDictionary(
+            s => s.ToString().ToLowerInvariant(),
+            PenaltyFor);
+
+    /// <summary>RuleCategory -> snake_case anahtar (orn. StructuredData -> structured_data).</summary>
+    public static string CategoryKey(RuleCategory category)
+    {
+        var name = category.ToString();
+        var sb = new System.Text.StringBuilder(name.Length + 4);
+        for (var i = 0; i < name.Length; i++)
+        {
+            if (i > 0 && char.IsUpper(name[i])) sb.Append('_');
+            sb.Append(char.ToLowerInvariant(name[i]));
+        }
+        return sb.ToString();
     }
 }

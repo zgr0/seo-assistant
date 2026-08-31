@@ -13,6 +13,7 @@ public sealed class ApiExceptionHandler(IProblemDetailsService problemDetails) :
         {
             AuthException => (StatusCodes.Status401Unauthorized, "Kimlik dogrulama basarisiz"),
             ConflictException => (StatusCodes.Status409Conflict, "Cakisma"),
+            NotFoundException => (StatusCodes.Status404NotFound, "Bulunamadi"),
             InvalidOperationException => (StatusCodes.Status400BadRequest, "Gecersiz istek"),
             _ => (StatusCodes.Status500InternalServerError, "Sunucu hatasi")
         };

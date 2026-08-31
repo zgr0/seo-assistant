@@ -2,6 +2,14 @@ using Microsoft.Playwright;
 
 namespace SeoCopilot.Crawler;
 
+/// <summary>Playwright ile render edilmis sayfanin sonucu.</summary>
+public sealed record RenderedPage(
+    string Html,
+    int StatusCode,
+    string? ContentType,
+    string? FinalUrl,
+    string? XRobotsTag);
+
 /// <summary>
 /// Tek bir Chromium instance'i paylasir, her cagriya izole context verir.
 /// Uygulama omru boyunca singleton olmali. `playwright install chromium` gerekir.
@@ -25,15 +33,32 @@ public sealed class PlaywrightBrowserPool : IAsyncDisposable
         finally { _lock.Release(); }
     }
 
-    /// <summary>URL'i render eder, tam HTML doner.</summary>
-    public async Task<string> RenderHtmlAsync(string url, CancellationToken ct = default)
+    /// <summary>URL'i render eder; HTML, durum kodu ve SEO icin gereken basliklari doner.</summary>
+    public async Task<RenderedPage> RenderAsync(
+        Uri url, string userAgent, int timeoutSeconds, CancellationToken ct = default)
     {
         var browser = await GetBrowserAsync();
-        await using var context = await browser.NewContextAsync();
+        await using var context = await browser.NewContextAsync(new() { UserAgent = userAgent });
         var page = await context.NewPageAsync();
-        await page.GotoAsync(url, new() { WaitUntil = WaitUntilState.NetworkIdle });
+
+        var response = await page.GotoAsync(url.AbsoluteUri, new()
+        {
+            WaitUntil = WaitUntilState.NetworkIdle,
+            Timeout = timeoutSeconds * 1000
+        });
         ct.ThrowIfCancellationRequested();
-        return await page.ContentAsync();
+
+        var html = await page.ContentAsync();
+        if (response is null)
+            return new RenderedPage(html, 0, null, null, null);
+
+        var headers = response.Headers;
+        return new RenderedPage(
+            html,
+            response.Status,
+            headers.GetValueOrDefault("content-type"),
+            response.Url,
+            headers.GetValueOrDefault("x-robots-tag"));
     }
 
     public async ValueTask DisposeAsync()

@@ -14,4 +14,13 @@ public sealed record PageInput
     public IReadOnlyList<string> InternalLinks { get; init; } = [];
     public int WordCount { get; init; }
     public bool HasCanonical { get; init; }
+
+    /// <summary>meta[name=robots] + X-Robots-Tag birlesimi.</summary>
+    public string? RobotsMeta { get; init; }
+
+    public int ImagesTotal { get; init; }
+    public int ImagesNoAlt { get; init; }
+
+    /// <summary>JSON-LD / microdata icinden toplanan schema.org tipleri.</summary>
+    public IReadOnlyList<string> SchemaTypes { get; init; } = [];
 }

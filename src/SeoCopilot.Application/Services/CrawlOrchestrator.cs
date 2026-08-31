@@ -1,28 +1,25 @@
-using System.Security.Cryptography;
-using System.Text;
 using SeoCopilot.Application.Abstractions;
+using SeoCopilot.Application.Common;
 using SeoCopilot.Application.Dtos;
 using SeoCopilot.Domain.Entities.Crawling;
-using SeoCopilot.Domain.Entities.Json;
-using SeoCopilot.Domain.Entities.Rules;
 using SeoCopilot.Domain.Enums;
 
 namespace SeoCopilot.Application.Services;
 
 /// <summary>
 /// Ana use-case: dogrulanmis bir site icin crawl kuyruga at; worker cagrisinda
-/// sayfalari cek, kural motorunu calistir, issue'lari ve skoru yaz.
+/// <see cref="CrawlEngine"/>'i calistir, durumu ve hatayi yaz.
 /// </summary>
 public sealed class CrawlOrchestrator(
     ISiteRepository repository,
-    IPageExtractor extractor,
-    IRuleRunner ruleRunner,
+    CrawlEngine engine,
     ICrawlQueue queue)
 {
-    public async Task<StartCrawlResponse> StartAsync(StartCrawlRequest request, CancellationToken ct = default)
+    public async Task<StartCrawlResponse> StartAsync(
+        StartCrawlRequest request, Guid tenantId, CancellationToken ct = default)
     {
-        var site = await repository.GetSiteAsync(request.SiteId, ct)
-            ?? throw new InvalidOperationException($"Site {request.SiteId} bulunamadi");
+        var site = await repository.GetSiteForTenantAsync(request.SiteId, tenantId, ct)
+            ?? throw new NotFoundException($"Site {request.SiteId} bulunamadi");
 
         if (site.VerifiedAt is null)
             throw new InvalidOperationException("Site dogrulanmadan tarama baslatilamaz");
@@ -45,78 +42,73 @@ public sealed class CrawlOrchestrator(
     public async Task RunAsync(Guid crawlId, CancellationToken ct = default)
     {
         var crawl = await repository.GetCrawlAsync(crawlId, ct)
-            ?? throw new InvalidOperationException($"Crawl {crawlId} bulunamadi");
+            ?? throw new NotFoundException($"Crawl {crawlId} bulunamadi");
         var site = await repository.GetSiteAsync(crawl.SiteId, ct)
-            ?? throw new InvalidOperationException($"Site {crawl.SiteId} bulunamadi");
+            ?? throw new NotFoundException($"Site {crawl.SiteId} bulunamadi");
 
         crawl.Status = CrawlStatus.Running;
         crawl.StartedAt = DateTimeOffset.UtcNow;
+        crawl.ErrorMessage = null;
         await repository.SaveChangesAsync(ct);
 
         try
         {
-            var extracted = await extractor.ExtractAsync(site.BaseUrl, ct);
-
-            var page = new Page
-            {
-                CrawlId = crawl.Id,
-                Url = extracted.Url,
-                UrlHash = Sha256(extracted.Url),
-                Depth = 0,
-                StatusCode = extracted.StatusCode,
-                Title = extracted.Title,
-                TitleLength = extracted.Title?.Length,
-                MetaDescription = extracted.MetaDescription,
-                MetaDescLength = extracted.MetaDescription?.Length,
-                H1Texts = [.. extracted.H1],
-                WordCount = extracted.WordCount,
-                OutlinkInternal = extracted.InternalLinks.Count
-            };
-            crawl.Pages.Add(page);
-
-            var outcome = ruleRunner.Run(extracted);
-            foreach (var f in outcome.Findings)
-            {
-                crawl.Issues.Add(new Issue
-                {
-                    CrawlId = crawl.Id,
-                    SiteId = site.Id,
-                    PageId = page.Id,
-                    RuleCode = f.RuleCode,
-                    Severity = f.Severity,
-                    Weight = (int)f.Severity,
-                    Evidence = new IssueEvidence { Found = f.Message },
-                    Status = IssueStatus.Open,
-                    FirstSeenCrawlId = crawl.Id
-                });
-            }
-
-            crawl.IssueCounts = crawl.Issues
-                .GroupBy(i => i.Severity.ToString().ToLowerInvariant())
-                .ToDictionary(g => g.Key, g => g.Count());
-            crawl.OverallScore = outcome.Score;
-            crawl.PagesDiscovered = 1;
-            crawl.PagesCrawled = 1;
-            crawl.Status = CrawlStatus.Completed;
-            crawl.FinishedAt = DateTimeOffset.UtcNow;
-
-            await repository.SaveChangesAsync(ct);
+            crawl.Status = await engine.RunAsync(crawl, site, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            await FinishAsync(crawl, CrawlStatus.Cancelled, "Tarama iptal edildi", CancellationToken.None);
+            throw;
         }
         catch (Exception ex)
         {
-            crawl.Status = CrawlStatus.Failed;
-            crawl.ErrorMessage = ex.Message;
-            crawl.FinishedAt = DateTimeOffset.UtcNow;
-            await repository.SaveChangesAsync(ct);
+            await FinishAsync(crawl, CrawlStatus.Failed, ex.Message, ct);
             throw;
         }
+
+        crawl.FinishedAt = DateTimeOffset.UtcNow;
+        await repository.SaveChangesAsync(ct);
     }
 
-    public async Task<CrawlSummaryDto?> GetSummaryAsync(Guid crawlId, CancellationToken ct = default)
+    public async Task<CrawlSummaryDto?> GetSummaryAsync(
+        Guid crawlId, Guid tenantId, CancellationToken ct = default)
     {
-        var crawl = await repository.GetCrawlAsync(crawlId, ct);
+        var crawl = await repository.GetCrawlForTenantAsync(crawlId, tenantId, ct);
         return crawl is null ? null : CrawlSummaryDto.From(crawl);
     }
 
-    private static byte[] Sha256(string value) => SHA256.HashData(Encoding.UTF8.GetBytes(value));
+    public async Task<PagedResult<PageDto>?> GetPagesAsync(
+        Guid crawlId, Guid tenantId, int page, int size, CancellationToken ct = default)
+    {
+        var crawl = await repository.GetCrawlForTenantAsync(crawlId, tenantId, ct);
+        if (crawl is null) return null;
+
+        var pageNumber = Math.Max(1, page);
+        var pageSize = Math.Clamp(size, 1, 200);
+
+        var total = await repository.CountPagesAsync(crawlId, ct);
+        var items = await repository.GetPagesAsync(crawlId, (pageNumber - 1) * pageSize, pageSize, ct);
+
+        return new PagedResult<PageDto>([.. items.Select(PageDto.From)], total, pageNumber, pageSize);
+    }
+
+    public async Task<IReadOnlyList<IssueDto>?> GetIssuesAsync(
+        Guid crawlId, Guid tenantId, Severity? minSeverity, CancellationToken ct = default)
+    {
+        var crawl = await repository.GetCrawlForTenantAsync(crawlId, tenantId, ct);
+        if (crawl is null) return null;
+
+        return [.. crawl.Issues
+            .Where(i => minSeverity is null || i.Severity >= minSeverity)
+            .OrderByDescending(i => i.Severity)
+            .Select(IssueDto.From)];
+    }
+
+    private async Task FinishAsync(Crawl crawl, CrawlStatus status, string? error, CancellationToken ct)
+    {
+        crawl.Status = status;
+        crawl.ErrorMessage = error;
+        crawl.FinishedAt = DateTimeOffset.UtcNow;
+        await repository.SaveChangesAsync(ct);
+    }
 }

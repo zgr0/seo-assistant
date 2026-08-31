@@ -16,6 +16,8 @@ SeoCopilot.slnx
 │   └── SeoCopilot.Web/             React + Vite (ayri build, Caddy servis eder)
 └── tests/
     ├── SeoCopilot.Rules.Tests/     Kural + skor birim testleri
+    ├── SeoCopilot.Crawler.Tests/   URL normalizasyon, robots, sitemap, HTML cikarma (ag'siz)
+    ├── SeoCopilot.Auth.Tests/      JWT + bcrypt birim testleri
     └── SeoCopilot.Api.Tests/       Testcontainers (Postgres) ile entegrasyon
 ```
 
@@ -49,10 +51,10 @@ Web (dev):
 cd src/SeoCopilot.Web && npm run dev
 ```
 
-Playwright tarayicisi (Crawler icin bir kez):
+Playwright tarayicisi — yalnizca `renderJs: true` kullanilacaksa, bir kez:
 
 ```bash
-pwsh src/SeoCopilot.Crawler/bin/Debug/net10.0/playwright.ps1 install chromium
+pwsh src/SeoCopilot.Api/bin/Debug/net10.0/playwright.ps1 install chromium
 ```
 
 ## Auth
@@ -73,6 +75,52 @@ E-posta kayitta global benzersiz kabul edilir (DB kisiti `unique(tenant_id,email
 Korumali endpoint ornegi: `Authorization: Bearer <accessToken>` → `POST /api/crawls`.
 
 Ayarlar (`appsettings.json` → `Jwt`): `Key` (>=32 bayt, prod'da user-secrets), `Issuer`, `Audience`, `AccessTokenMinutes`, `RefreshTokenDays`.
+
+Tum `/api/sites` ve `/api/crawls` uclari token'daki `tenant_id` ile sinirlanir — baska kiracinin kaydi `404` doner.
+
+## Site & tarama
+
+### Endpoint'ler
+
+| Endpoint | Aciklama |
+| --- | --- |
+| `POST /api/sites` | `{name,baseUrl,crawlSettings?}` → site + `verificationToken`. `baseUrl` normalize edilir (sema+host, sonda `/` yok) |
+| `GET /api/sites` | Kiracinin siteleri |
+| `GET /api/sites/{id}` | Tek site |
+| `POST /api/sites/{id}/verify` | Kok sayfada `<meta name="seocopilot-verification" content="...">` arar; bulursa `verified_at` yazar |
+| `PATCH /api/sites/{id}/crawl-settings` | Kismi guncelleme — verilmeyen alanlar korunur |
+| `POST /api/crawls` | `{siteId}` → crawl kuyruga girer (Hangfire). Site dogrulanmamissa `400` |
+| `GET /api/crawls/{id}` | Ozet: durum, skorlar, `issue_counts`, ilk 100 bulgu |
+| `GET /api/crawls/{id}/pages?page=&size=` | Sayfalanmis sayfa listesi (size en fazla 200) |
+| `GET /api/crawls/{id}/issues?minSeverity=` | Bulgular; `minSeverity` = `low\|medium\|high\|critical` |
+
+### Tarama motoru
+
+[`CrawlEngine`](src/SeoCopilot.Application/Services/CrawlEngine.cs) seviye seviye BFS yapar:
+
+- **Tohum**: `base_url` + `robots.txt`'deki (yoksa `/sitemap.xml`) sitemap URL'leri. Kok URL robots/desen filtrelerinden muaftir.
+- **robots.txt**: RFC 9309 — ardisik `User-agent` satirlari tek grup, en uzun desen kazanir, esitlikte `Allow` oncelikli, `*`/`$` desteklenir. Kendi token'imiz (`seocopilotbot`) `*`'a gore onceliklidir. Dosya yoksa kisit yok.
+- **Es zamanlilik ve nezaket**: her seviye `Concurrency` paralellikte, her getirmeden sonra `DelayMs` beklenir (~`Concurrency/DelayMs` istek/sn). Getirme paralel, veritabanina yazma tek is parcaciginda.
+- **Yonlendirme**: elle izlenir (`AllowAutoRedirect=false`), en fazla `Crawler:MaxRedirects` atlama. `status_code` zincirin sonundan, `redirect_to` varilan adresten gelir.
+- **Ayristirma**: yalniz 2xx + `text/html`. Govde `Crawler:MaxHtmlBytes` ile sinirli. `nofollow` linkler `page_links`'e yazilir ama kuyruga alinmaz.
+- **Durum**: normal bitis `completed`; `MaxPages`/`MaxDepth` yuzunden kuyrukta URL kaldiysa `partial`; iptal `cancelled`; kok URL alinamazsa `failed`. Tekil sayfa hatasi crawl'i dusurmez — `status_code = 0` yazilir ve `HTTP_STATUS` tetiklenir.
+- **Link grafigi**: tarama sonrasi `page_links.to_page_id` cozulur, `pages.inlink_count` / `outlink_internal` / `outlink_external` hesaplanir.
+
+`crawl_settings` (jsonb, site basina): `maxPages` (500), `maxDepth` (5), `delayMs` (500), `concurrency` (3), `renderJs` (false), `includePatterns`, `excludePatterns`. Desenler mutlak URL'e karsi **regex** (IgnoreCase, 1 sn timeout); `include` bos degilse en az biri eslesmeli.
+
+`renderJs: true` ise sayfa Playwright/Chromium ile render edilir (JS calisir); aksi halde duz `HttpClient`.
+
+### Kurallar ve skor
+
+Sayfa basina kurallar: `HTTP_STATUS`, `NOINDEX_DETECTED`, `META_TITLE_MISSING`, `META_TITLE_LENGTH`, `META_DESCRIPTION_MISSING`, `META_DESCRIPTION_LENGTH`, `H1_MISSING`, `H1_MULTIPLE`, `CANONICAL_MISSING`, `THIN_CONTENT`, `IMAGE_ALT_MISSING`, `STRUCTURED_DATA_MISSING`.
+Crawl basina kurallar ([`CrawlRules`](src/SeoCopilot.Rules/CrawlRules.cs)): `DUPLICATE_CONTENT` (ayni `content_hash`), `BROKEN_INTERNAL_LINK` (4xx/5xx donen ic link).
+
+Kural kodlari `rules` tablosu seed'i ile birebir ayni olmak zorundadir — `issues.rule_code` ona FK. Sayfa 2xx donmuyorsa yalniz `HTTP_STATUS` raporlanir.
+
+Skor: severity basina sabit ceza (critical 25, high 15, medium 8, low 3) 100'den dusulur.
+`crawls.overall_score` = sayfa skorlarinin ortalamasi eksi crawl seviyesi cezalar;
+`category_scores` kategori basina ayni formul (ceza sayfa sayisina bolunur);
+`scoring_snapshot` kullanilan ceza tablosunu dondurur.
 
 ## Veritabani
 
@@ -115,9 +163,13 @@ dotnet ef migrations add <Ad> -p src/SeoCopilot.Infrastructure -s src/SeoCopilot
 ## Test
 
 ```bash
-dotnet test tests/SeoCopilot.Rules.Tests
+dotnet test tests/SeoCopilot.Rules.Tests tests/SeoCopilot.Crawler.Tests tests/SeoCopilot.Auth.Tests
 dotnet test tests/SeoCopilot.Api.Tests    # Docker gerekli
 ```
+
+`SeoCopilot.Api.Tests` icindeki `CrawlEngineTests`, rastgele portta kucuk bir test sitesi
+([`TestWebSite`](tests/SeoCopilot.Api.Tests/TestWebSite.cs)) ayaga kaldirip taramayi gercek HTTP
+ve gercek Postgres uzerinde ucdan uca calistirir.
 
 ## Konfigurasyon (appsettings / user-secrets)
 
@@ -125,6 +177,8 @@ dotnet test tests/SeoCopilot.Api.Tests    # Docker gerekli
 | --- | --- |
 | `ConnectionStrings:Postgres` | EF Core + Hangfire storage |
 | `Jwt:Key` / `Jwt:Issuer` / `Jwt:Audience` | Bearer token dogrulama |
+| `Crawler:UserAgent` / `Crawler:UserAgentToken` | Giden istek basligi ve robots.txt'de eslesecek token |
+| `Crawler:RequestTimeoutSeconds` / `MaxRedirects` / `MaxHtmlBytes` / `MaxMainTextChars` | Getirme sinirlari |
 | `Anthropic:ApiKey` | Anthropic Messages API |
 | `PageSpeed:ApiKey` | Google PSI (opsiyonel) |
 | `Smtp:*` | Rapor maili |
