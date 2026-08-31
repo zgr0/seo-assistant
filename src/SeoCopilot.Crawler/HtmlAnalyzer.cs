@@ -17,6 +17,9 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
     /// <summary>MainText hesaplanirken atilan, icerik tasimayan elemanlar.</summary>
     private const string NoiseSelector = "script, style, noscript, template, svg, nav, header, footer, aside, iframe";
 
+    /// <summary>Baslik hiyerarsisi sayilirken yok sayilan kapsayicilar — menu basliklari yanilgi yaratmasin.</summary>
+    private const string ChromeSelector = "nav, header, footer, aside";
+
     public async Task<ExtractedPage> AnalyzeAsync(
         string html,
         Uri requestUrl,
@@ -53,9 +56,11 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
         var images = doc.QuerySelectorAll("img").ToList();
         var links = ExtractLinks(doc, linkBase, siteBaseUri);
         var h2Count = doc.QuerySelectorAll("h2").Length;
+        var headingLevels = ExtractHeadingLevels(doc);
         var robotsMeta = CombineRobots(doc.QuerySelector("meta[name=robots]")?.GetAttribute("content"), xRobotsTag);
-        var ogDataJson = ExtractOpenGraph(doc);
+        var openGraph = ExtractOpenGraph(doc);
         var schemaTypes = ExtractSchemaTypes(doc);
+        var imageUrls = ExtractImageUrls(images, linkBase);
         var lang = doc.DocumentElement?.GetAttribute("lang")?.Trim();
 
         // DOM'u degistirdigi icin en son: script/nav/footer gibi elemanlari siler.
@@ -73,13 +78,16 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
             MetaDescription = metaDescription,
             H1 = h1,
             H2Count = h2Count,
+            HeadingLevels = headingLevels,
             WordCount = CountWords(mainText),
             CanonicalUrl = canonical,
             RobotsMeta = robotsMeta,
-            OgDataJson = ogDataJson,
+            OgDataJson = openGraph.Json,
+            OgTags = openGraph.Tags,
             SchemaTypes = schemaTypes,
             ImagesTotal = images.Count,
             ImagesNoAlt = images.Count(i => string.IsNullOrWhiteSpace(i.GetAttribute("alt"))),
+            ImageUrls = imageUrls,
             MainText = Clip(mainText, maxMainTextChars),
             ContentHash = mainText.Length == 0 ? null : SHA256.HashData(Encoding.UTF8.GetBytes(mainText)),
             Lang = lang,
@@ -120,7 +128,29 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
         return NormalizeWhitespace(doc.Body?.TextContent ?? string.Empty);
     }
 
-    private static string? ExtractOpenGraph(IDocument doc)
+    /// <summary>Menu/altbilgi disindaki basliklarin belge sirasindaki seviyeleri.</summary>
+    private static List<int> ExtractHeadingLevels(IDocument doc) =>
+    [
+        .. doc.QuerySelectorAll("h1, h2, h3, h4, h5, h6")
+            .Where(e => e.Closest(ChromeSelector) is null)
+            .Select(e => e.LocalName[1] - '0')
+    ];
+
+    private static List<string> ExtractImageUrls(IEnumerable<IElement> images, Uri linkBase)
+    {
+        var urls = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var img in images)
+        {
+            if (!UrlNormalizer.TryNormalize(img.GetAttribute("src"), linkBase, out var url)) continue;
+            if (seen.Add(url.AbsoluteUri)) urls.Add(url.AbsoluteUri);
+        }
+
+        return urls;
+    }
+
+    private static (string? Json, List<string> Tags) ExtractOpenGraph(IDocument doc)
     {
         var og = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var meta in doc.QuerySelectorAll("meta[property^=\"og:\"]"))
@@ -131,7 +161,9 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
             og.TryAdd(property.Trim(), content.Trim());
         }
 
-        return og.Count == 0 ? null : JsonSerializer.Serialize(og);
+        return og.Count == 0
+            ? (null, [])
+            : (JsonSerializer.Serialize(og), [.. og.Keys]);
     }
 
     private static List<string> ExtractSchemaTypes(IDocument doc)

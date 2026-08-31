@@ -112,13 +112,31 @@ Tum `/api/sites` ve `/api/crawls` uclari token'daki `tenant_id` ile sinirlanir �
 
 ### Kurallar ve skor
 
-Sayfa basina kurallar: `HTTP_STATUS`, `NOINDEX_DETECTED`, `META_TITLE_MISSING`, `META_TITLE_LENGTH`, `META_DESCRIPTION_MISSING`, `META_DESCRIPTION_LENGTH`, `H1_MISSING`, `H1_MULTIPLE`, `CANONICAL_MISSING`, `THIN_CONTENT`, `IMAGE_ALT_MISSING`, `STRUCTURED_DATA_MISSING`.
-Crawl basina kurallar ([`CrawlRules`](src/SeoCopilot.Rules/CrawlRules.cs)): `DUPLICATE_CONTENT` (ayni `content_hash`), `BROKEN_INTERNAL_LINK` (4xx/5xx donen ic link).
+Kurallar iki kumede calisir: **sayfa basina** ([`RuleEngine`](src/SeoCopilot.Rules/RuleEngine.cs), tek sayfanin
+kendi verisine bakar) ve **crawl basina** ([`CrawlRules`](src/SeoCopilot.Rules/CrawlRules.cs), tum sayfa/link
+kumesine ve site gerceklerine bakar).
 
-Kural kodlari `rules` tablosu seed'i ile birebir ayni olmak zorundadir — `issues.rule_code` ona FK. Sayfa 2xx donmuyorsa yalniz `HTTP_STATUS` raporlanir.
+| Kategori | Sayfa basina | Crawl basina |
+| --- | --- | --- |
+| Indexability | `ROBOTS_NOINDEX` · `BROKEN_PAGE_4XX` · `SERVER_ERROR_5XX` · `REDIRECT_CHAIN` (>1 atlama) · `CANONICAL_MISSING` · `CANONICAL_POINTS_ELSEWHERE` | `BLOCKED_BY_ROBOTS_TXT` · `SITEMAP_MISSING` · `PAGE_NOT_IN_SITEMAP` |
+| Meta | `META_TITLE_MISSING` · `META_TITLE_TOO_SHORT` (<30) · `META_TITLE_TOO_LONG` (>60) · `META_DESC_MISSING` · `META_DESC_TOO_LONG` (>160) | `META_TITLE_DUPLICATE` · `META_DESC_DUPLICATE` |
+| Content | `H1_MISSING` · `H1_MULTIPLE` · `THIN_CONTENT` (<300 kelime) · `HEADING_HIERARCHY_BROKEN` | `DUPLICATE_CONTENT` |
+| Links | `GENERIC_ANCHOR_TEXT` | `BROKEN_INTERNAL_LINK` · `ORPHAN_PAGE` · `TOO_DEEP` (>4) |
+| Images | `IMAGE_MISSING_ALT` · `IMAGE_TOO_LARGE` (>200 KB) | — |
+| Structured data & i18n | `SCHEMA_MISSING` · `OG_TAGS_MISSING` · `LANG_ATTR_MISSING` | — |
+| Performance (PSI) | — | `LCP_POOR` (>4 sn) · `CLS_POOR` (>0.25) · `INP_POOR` (>500 ms) |
+
+Notlar:
+
+- Kural kodlari `rules` tablosu seed'i ile birebir ayni olmak zorundadir — `issues.rule_code` ona FK.
+- Sayfa 2xx donmuyorsa yalniz ulasilabilirlik kodlari (`BROKEN_PAGE_4XX`, `SERVER_ERROR_5XX`, `REDIRECT_CHAIN`) raporlanir; getirilemeyen sayfa (`status_code = 0`) `SERVER_ERROR_5XX` sayilir.
+- `PAGE_NOT_IN_SITEMAP`, `ORPHAN_PAGE`, `META_*_DUPLICATE` yalniz **dizinlenebilir** sayfalar icin uretilir (2xx + noindex yok). Sitemap hic bulunamazsa `SITEMAP_MISSING` yazilir ve `PAGE_NOT_IN_SITEMAP` bastirilir.
+- `IMAGE_TOO_LARGE` icin crawler sayfa basina `Crawler:MaxImageChecksPerPage` kadar gorselin boyutunu HEAD ile olcer (sonuclar crawl boyunca onbelleklenir). Deger `0` ise olcum kapanir ve kural sessiz kalir.
+- Performans kurallari yalniz `PageSpeed:ApiKey` tanimliysa calisir: kok sayfa icin PSI cagrilir, olcum `vitals` tablosuna yazilir ve kurallara beslenir. PSI hata verirse crawl etkilenmez.
 
 Skor: severity basina sabit ceza (critical 25, high 15, medium 8, low 3) 100'den dusulur.
-`crawls.overall_score` = sayfa skorlarinin ortalamasi eksi crawl seviyesi cezalar;
+`crawls.overall_score` = sayfa skorlarinin ortalamasi eksi crawl seviyesi cezalar — crawl seviyesi ceza
+**kural kodu basina bir kez** uygulanir, boylece 300 oksuz sayfa skoru tek basina sifirlamaz.
 `category_scores` kategori basina ayni formul (ceza sayfa sayisina bolunur);
 `scoring_snapshot` kullanilan ceza tablosunu dondurur.
 
@@ -144,7 +162,12 @@ EF yapilandirmasi: [src/SeoCopilot.Infrastructure/Persistence](src/SeoCopilot.In
 
 ### Migration
 
-`InitialCreate` uretildi ([Persistence/Migrations](src/SeoCopilot.Infrastructure/Persistence/Migrations)).
+`InitialCreate` ve `RuleCatalogueRework` uretildi ([Persistence/Migrations](src/SeoCopilot.Infrastructure/Persistence/Migrations)).
+`RuleCatalogueRework` kural katalogunu yeniler; once yeni kurallari ekler, mevcut `issues` satirlarini yeni
+kodlara tasir (`HTTP_STATUS` → sayfanin durum koduna gore `BROKEN_PAGE_4XX`/`SERVER_ERROR_5XX` gibi), ardindan
+eski kural satirlarini siler. Karsiligi kalmayan `SLOW_TTFB`, `HREFLANG_INVALID` ve esik alti
+`META_DESCRIPTION_LENGTH` bulgulari **silinir**.
+
 Uygulamak icin Postgres calisir olmali:
 
 ```bash
@@ -179,6 +202,7 @@ ve gercek Postgres uzerinde ucdan uca calistirir.
 | `Jwt:Key` / `Jwt:Issuer` / `Jwt:Audience` | Bearer token dogrulama |
 | `Crawler:UserAgent` / `Crawler:UserAgentToken` | Giden istek basligi ve robots.txt'de eslesecek token |
 | `Crawler:RequestTimeoutSeconds` / `MaxRedirects` / `MaxHtmlBytes` / `MaxMainTextChars` | Getirme sinirlari |
+| `Crawler:MaxImageChecksPerPage` | `IMAGE_TOO_LARGE` icin sayfa basina HEAD ile olculecek gorsel sayisi (varsayilan 10, `0` → kapali) |
 | `Anthropic:ApiKey` | Anthropic Messages API |
-| `PageSpeed:ApiKey` | Google PSI (opsiyonel) |
+| `PageSpeed:ApiKey` | Google PSI. Bos ise performans kurallari (`LCP_POOR`/`CLS_POOR`/`INP_POOR`) hic calismaz |
 | `Smtp:*` | Rapor maili |

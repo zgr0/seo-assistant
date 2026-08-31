@@ -1,4 +1,5 @@
 using SeoCopilot.Domain.Entities.Crawling;
+using SeoCopilot.Domain.Entities.Performance;
 using SeoCopilot.Domain.Entities.Sites;
 
 namespace SeoCopilot.Application.Abstractions;
@@ -25,6 +26,9 @@ public interface ISiteRepository
     Task AddPagesAsync(IEnumerable<Page> pages, CancellationToken ct = default);
 
     Task AddPageLinksAsync(IEnumerable<PageLink> links, CancellationToken ct = default);
+
+    /// <summary>PSI olcumu — performans kurallarinin kaynagi.</summary>
+    Task AddVitalAsync(Vital vital, CancellationToken ct = default);
 
     /// <summary>Crawl'in sayfalari, sayfalanmis.</summary>
     Task<IReadOnlyList<Page>> GetPagesAsync(Guid crawlId, int skip, int take, CancellationToken ct = default);

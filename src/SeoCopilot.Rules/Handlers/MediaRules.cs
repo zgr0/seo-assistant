@@ -3,9 +3,9 @@ using SeoCopilot.Rules.Model;
 
 namespace SeoCopilot.Rules.Handlers;
 
-public sealed class ImageAltRule : ISeoRule
+public sealed class ImageMissingAltRule : ISeoRule
 {
-    public string Code => "IMAGE_ALT_MISSING";
+    public string Code => "IMAGE_MISSING_ALT";
     public RuleCategory Category => RuleCategory.Images;
     public Severity Severity => Severity.Low;
     public int Weight => 3;
@@ -16,13 +16,25 @@ public sealed class ImageAltRule : ISeoRule
             : null;
 }
 
-public sealed class StructuredDataRule : ISeoRule
+/// <summary>
+/// 200 KB'i asan gorseller. Yalniz boyutu olculebilen gorseller degerlendirilir;
+/// crawler olcum yapmadiysa (<see cref="PageInput.ImageSizes"/> bos) kural sessizdir.
+/// </summary>
+public sealed class ImageTooLargeRule : ISeoRule
 {
-    public string Code => "STRUCTURED_DATA_MISSING";
-    public RuleCategory Category => RuleCategory.StructuredData;
-    public Severity Severity => Severity.Low;
-    public int Weight => 3;
+    public const long MaxBytes = 200 * 1024;
 
-    public string? Evaluate(PageInput page) =>
-        page.SchemaTypes.Count == 0 ? "Sayfada schema.org isaretlemesi bulunamadi." : null;
+    public string Code => "IMAGE_TOO_LARGE";
+    public RuleCategory Category => RuleCategory.Images;
+    public Severity Severity => Severity.Medium;
+    public int Weight => 4;
+
+    public string? Evaluate(PageInput page)
+    {
+        var oversized = page.ImageSizes.Where(i => i.Bytes > MaxBytes).ToList();
+        if (oversized.Count == 0) return null;
+
+        var largest = oversized.Max(i => i.Bytes);
+        return $"{oversized.Count} gorsel {MaxBytes / 1024} KB'i asiyor (en buyugu {largest / 1024} KB).";
+    }
 }

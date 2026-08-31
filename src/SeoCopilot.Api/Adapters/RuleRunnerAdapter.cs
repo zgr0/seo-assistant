@@ -22,12 +22,19 @@ public sealed class RuleRunnerAdapter : IRuleRunner
             MetaDescription = page.MetaDescription,
             H1 = page.H1,
             InternalLinks = page.InternalLinks,
+            InternalAnchorTexts = page.InternalAnchorTexts,
             WordCount = page.WordCount,
             HasCanonical = page.HasCanonical,
+            CanonicalUrl = page.CanonicalUrl,
+            RedirectCount = page.RedirectCount,
             RobotsMeta = page.RobotsMeta,
+            HeadingLevels = page.HeadingLevels,
             ImagesTotal = page.ImagesTotal,
             ImagesNoAlt = page.ImagesNoAlt,
-            SchemaTypes = page.SchemaTypes
+            ImageSizes = [.. page.ImageSizes.Select(i => new ImageSize(i.Url, i.Bytes))],
+            SchemaTypes = page.SchemaTypes,
+            OgTags = page.OgTags,
+            Lang = page.Lang
         };
 
         var result = _engine.Evaluate(input);
@@ -36,17 +43,35 @@ public sealed class RuleRunnerAdapter : IRuleRunner
 
     public IReadOnlyList<CrawlRuleFinding> RunCrawl(
         IReadOnlyList<CrawlPageFacts> pages,
-        IReadOnlyList<CrawlLinkFacts> links)
+        IReadOnlyList<CrawlLinkFacts> links,
+        CrawlSiteFacts site)
     {
         var pageInputs = pages
-            .Select(p => new CrawlPageInput(p.PageId, p.Url, p.StatusCode, p.ContentHash))
+            .Select(p => new CrawlPageInput(p.PageId, p.Url, p.StatusCode, p.ContentHash)
+            {
+                Depth = p.Depth,
+                InlinkCount = p.InlinkCount,
+                Title = p.Title,
+                MetaDescription = p.MetaDescription,
+                IsHome = p.IsHome,
+                NoIndex = p.NoIndex
+            })
             .ToList();
 
         var linkInputs = links
             .Select(l => new CrawlLinkInput(l.FromPageId, l.FromUrl, l.ToUrl, l.IsInternal, l.TargetStatusCode))
             .ToList();
 
-        return [.. CrawlRules.Evaluate(pageInputs, linkInputs)
+        var siteInput = new CrawlSiteInput
+        {
+            SitemapFound = site.SitemapFound,
+            SitemapUrls = site.SitemapUrls,
+            BlockedUrls = site.BlockedUrls,
+            HomePageId = site.HomePageId,
+            Vitals = site.Vitals is { } v ? new VitalsInput(v.LcpMs, v.Cls, v.InpMs) : null
+        };
+
+        return [.. CrawlRules.Evaluate(pageInputs, linkInputs, siteInput)
             .Select(v => new CrawlRuleFinding(v.PageId, ToFinding(v.Finding)))];
     }
 

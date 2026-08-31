@@ -184,11 +184,48 @@ public class CrawlEngineTests(PostgresFixture fixture) : IClassFixture<PostgresF
 
         Assert.Contains("DUPLICATE_CONTENT", codes);
         Assert.Contains("BROKEN_INTERNAL_LINK", codes);
-        Assert.Contains("NOINDEX_DETECTED", codes);
-        Assert.Contains("HTTP_STATUS", codes); // /kirik 404
+        Assert.Contains("ROBOTS_NOINDEX", codes);
+        Assert.Contains("BROKEN_PAGE_4XX", codes); // /kirik 404
+
+        // /a ve /b ayni title + ayni aciklama
+        Assert.Contains("META_TITLE_DUPLICATE", codes);
+        Assert.Contains("META_DESC_DUPLICATE", codes);
 
         var duplicate = result.Issues.Single(i => i.RuleCode == "DUPLICATE_CONTENT");
         Assert.Equal(2, duplicate.Evidence.SampleUrls.Count);
+    }
+
+    [Fact]
+    public async Task Robots_blocked_urls_and_sitemap_gaps_are_reported()
+    {
+        await using var webSite = await TestWebSite.StartAsync();
+        await using var factory = fixture.CreateFactory();
+
+        var result = await CrawlAsync(factory, webSite, "engine-indexability@example.com");
+        var byCode = result.Issues.ToLookup(i => i.RuleCode);
+
+        // robots.txt "/gizli" yolunu kapatiyor, ana sayfa oraya link veriyor
+        var blocked = Assert.Single(byCode["BLOCKED_BY_ROBOTS_TXT"]);
+        Assert.Contains(blocked.Evidence.SampleUrls, u => u.EndsWith("/gizli/x"));
+
+        // sitemap "/" ve "/sitemap-only" iceriyor; /a ve /b disarida
+        var notInSitemap = byCode["PAGE_NOT_IN_SITEMAP"]
+            .SelectMany(i => i.Evidence.SampleUrls)
+            .Select(u => new Uri(u).AbsolutePath)
+            .ToHashSet();
+        Assert.Contains("/a", notInSitemap);
+        Assert.Contains("/b", notInSitemap);
+        Assert.DoesNotContain("/sitemap-only", notInSitemap);
+
+        Assert.Empty(byCode["SITEMAP_MISSING"]);
+
+        // /sitemap-only sayfasina hicbir ic link yok
+        var orphan = Assert.Single(byCode["ORPHAN_PAGE"]);
+        Assert.EndsWith("/sitemap-only", orphan.Evidence.SampleUrls[0]);
+
+        // /b canonical'i /a'yi gosteriyor
+        var canonical = Assert.Single(byCode["CANONICAL_POINTS_ELSEWHERE"]);
+        Assert.NotNull(canonical.PageId);
     }
 
     [Fact]

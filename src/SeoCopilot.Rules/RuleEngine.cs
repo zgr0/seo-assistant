@@ -9,6 +9,10 @@ namespace SeoCopilot.Rules;
 /// </summary>
 public sealed class RuleEngine
 {
+    /// <summary>Sayfa 2xx donmuyorsa yalniz bu kodlar raporlanir; gerisi gurultu olurdu.</summary>
+    private static readonly HashSet<string> TransportCodes =
+        ["BROKEN_PAGE_4XX", "SERVER_ERROR_5XX", "REDIRECT_CHAIN"];
+
     private readonly IReadOnlyList<ISeoRule> _rules;
 
     public RuleEngine(IEnumerable<ISeoRule> rules) => _rules = [.. rules];
@@ -16,18 +20,38 @@ public sealed class RuleEngine
     /// <summary>Varsayilan kural seti — kodlar rules tablosu seed'i ile birebir ayni.</summary>
     public static RuleEngine Default() => new(
     [
-        new HttpStatusRule(),
-        new NoIndexRule(),
+        // Indexability
+        new BrokenPage4xxRule(),
+        new ServerError5xxRule(),
+        new RedirectChainRule(),
+        new RobotsNoIndexRule(),
+        new CanonicalMissingRule(),
+        new CanonicalPointsElsewhereRule(),
+
+        // Meta
         new MetaTitleMissingRule(),
-        new MetaTitleLengthRule(),
-        new MetaDescriptionMissingRule(),
-        new MetaDescriptionLengthRule(),
+        new MetaTitleTooShortRule(),
+        new MetaTitleTooLongRule(),
+        new MetaDescMissingRule(),
+        new MetaDescTooLongRule(),
+
+        // Content
         new H1MissingRule(),
         new H1MultipleRule(),
-        new CanonicalRule(),
         new ThinContentRule(),
-        new ImageAltRule(),
-        new StructuredDataRule(),
+        new HeadingHierarchyBrokenRule(),
+
+        // Links
+        new GenericAnchorTextRule(),
+
+        // Images
+        new ImageMissingAltRule(),
+        new ImageTooLargeRule(),
+
+        // Structured data & i18n
+        new SchemaMissingRule(),
+        new OgTagsMissingRule(),
+        new LangAttrMissingRule(),
     ]);
 
     public RuleEvaluation Evaluate(PageInput page)
@@ -40,9 +64,9 @@ public sealed class RuleEngine
                 violations.Add(new RuleViolation(rule.Code, rule.Category, rule.Severity, rule.Weight, msg));
         }
 
-        // Sayfa 2xx donmuyorsa icerik kurallarinin bulgusu gurultu — sadece durum kodunu bildir.
+        // Sayfa 2xx donmuyorsa icerik kurallarinin bulgusu gurultu — sadece ulasilabilirligi bildir.
         if (page.StatusCode is < 200 or >= 300)
-            violations = [.. violations.Where(v => v.Code == "HTTP_STATUS")];
+            violations = [.. violations.Where(v => TransportCodes.Contains(v.Code))];
 
         return new RuleEvaluation(ScoreCalculator.Calculate(violations), violations);
     }

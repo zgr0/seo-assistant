@@ -75,8 +75,68 @@ public class PageExtractorTests
         Assert.NotNull(page.OgDataJson);
         Assert.Contains("og:title", page.OgDataJson);
         Assert.Contains("OG Baslik", page.OgDataJson);
+        Assert.Equal(["og:title", "og:type"], page.OgTags.Order());
         Assert.Contains("Article", page.SchemaTypes);
         Assert.Contains("Person", page.SchemaTypes);
+    }
+
+    [Fact]
+    public async Task Heading_levels_are_collected_in_document_order()
+    {
+        const string html = """
+            <html lang="tr"><body>
+              <header><h2>menu basligi</h2></header>
+              <h1>Ana</h1><h2>Alt</h2><h4>Atlanmis</h4>
+            </body></html>
+            """;
+        var handler = new StubHttpMessageHandler().Map(PageUri.AbsoluteUri, html);
+
+        var page = await ExtractAsync(handler);
+
+        // header icindeki baslik sayilmaz
+        Assert.Equal([1, 2, 4], page.HeadingLevels);
+    }
+
+    [Fact]
+    public async Task Image_urls_are_absolutized_and_deduplicated()
+    {
+        var handler = new StubHttpMessageHandler().Map(PageUri.AbsoluteUri, RichHtml);
+
+        var page = await ExtractAsync(handler);
+
+        Assert.Equal(
+            ["https://example.com/a.png", "https://example.com/b.png", "https://example.com/c.png"],
+            page.ImageUrls);
+    }
+
+    [Fact]
+    public async Task Image_sizes_are_measured_with_head_requests()
+    {
+        var handler = new StubHttpMessageHandler()
+            .Map(PageUri.AbsoluteUri, RichHtml)
+            .Map("https://example.com/a.png", new string('x', 300_000), "image/png")
+            .Map("https://example.com/b.png", new string('x', 1_000), "image/png");
+        // /c.png eslesmiyor → 404 → olculemez
+
+        var page = await ExtractAsync(handler);
+
+        Assert.Equal(2, page.ImageSizes.Count);
+        Assert.Equal(300_000, page.ImageSizes.Single(i => i.Url.EndsWith("a.png")).Bytes);
+        Assert.Contains(handler.Requests, r => r == "https://example.com/a.png");
+    }
+
+    [Fact]
+    public async Task Image_size_checks_can_be_switched_off()
+    {
+        var handler = new StubHttpMessageHandler()
+            .Map(PageUri.AbsoluteUri, RichHtml)
+            .Map("https://example.com/a.png", new string('x', 300_000), "image/png");
+
+        var page = await Build(handler, new CrawlerOptions { MaxImageChecksPerPage = 0 })
+            .ExtractAsync(PageUri, new PageFetchOptions(BaseUri));
+
+        Assert.Empty(page.ImageSizes);
+        Assert.Single(handler.Requests); // yalniz sayfanin kendisi
     }
 
     [Fact]
@@ -175,6 +235,20 @@ public class PageExtractorTests
         Assert.Equal(200, page.StatusCode);
         Assert.Equal("https://example.com/yeni", page.RedirectTo);
         Assert.Equal("https://example.com/eski", page.Url);
+        Assert.Equal(1, page.RedirectCount);
+    }
+
+    [Fact]
+    public async Task Redirect_count_grows_with_every_hop()
+    {
+        var handler = new StubHttpMessageHandler()
+            .MapRedirect("https://example.com/1", "https://example.com/2")
+            .MapRedirect("https://example.com/2", "https://example.com/3")
+            .Map("https://example.com/3", RichHtml);
+
+        var page = await ExtractAsync(handler, new Uri("https://example.com/1"));
+
+        Assert.Equal(2, page.RedirectCount);
     }
 
     [Fact]

@@ -28,6 +28,8 @@ public static class ScoreCalculator
     /// <summary>
     /// Crawl geneli skor: sayfa skorlarinin ortalamasi, ardindan crawl seviyesi
     /// bulgularin cezasi dusulur.
+    /// Ceza kural kodu basina bir kez uygulanir — ORPHAN_PAGE gibi sayfa basina
+    /// bulgu ureten kurallar buyuk sitelerde skoru tek basina sifirlamasin.
     /// </summary>
     public static decimal CalculateOverall(
         IEnumerable<int> pageScores,
@@ -37,7 +39,10 @@ public static class ScoreCalculator
         if (scores.Count == 0) return 0m;
 
         var average = (decimal)scores.Sum() / scores.Count;
-        var penalty = crawlLevelViolations.Sum(v => PenaltyFor(v.Severity));
+        var penalty = crawlLevelViolations
+            .GroupBy(v => v.Code, StringComparer.Ordinal)
+            .Sum(g => PenaltyFor(g.Max(v => v.Severity)));
+
         return Math.Clamp(Math.Round(average - penalty, 2), 0m, 100m);
     }
 

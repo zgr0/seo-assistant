@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using System.Text;
@@ -21,10 +22,17 @@ public sealed class PageExtractor(
     private readonly CrawlerOptions _options = options.Value;
     private readonly HtmlAnalyzer _analyzer = new(options.Value.MaxMainTextChars);
 
-    public Task<ExtractedPage> ExtractAsync(Uri url, PageFetchOptions fetch, CancellationToken ct = default) =>
-        fetch.RenderJs
-            ? ExtractRenderedAsync(url, fetch, ct)
-            : ExtractHttpAsync(url, fetch, ct);
+    /// <summary>Gorsel boyutu onbellegi — ayni logo her sayfada yeniden sorulmasin. null = olculemedi.</summary>
+    private readonly ConcurrentDictionary<string, long?> _imageSizes = new(StringComparer.Ordinal);
+
+    public async Task<ExtractedPage> ExtractAsync(Uri url, PageFetchOptions fetch, CancellationToken ct = default)
+    {
+        var page = fetch.RenderJs
+            ? await ExtractRenderedAsync(url, fetch, ct)
+            : await ExtractHttpAsync(url, fetch, ct);
+
+        return page with { ImageSizes = await MeasureImagesAsync(page.ImageUrls, ct) };
+    }
 
     private async Task<ExtractedPage> ExtractHttpAsync(Uri url, PageFetchOptions fetch, CancellationToken ct)
     {
@@ -32,6 +40,7 @@ public sealed class PageExtractor(
 
         var current = url;
         string? redirectTo = null;
+        var redirects = 0;
         HttpResponseMessage? response = null;
 
         try
@@ -48,6 +57,7 @@ public sealed class PageExtractor(
 
                 current = new Uri(current, location);
                 redirectTo = current.AbsoluteUri;
+                redirects++;
             }
 
             var status = (int)response.StatusCode;
@@ -65,6 +75,7 @@ public sealed class PageExtractor(
                     StatusCode = status,
                     ContentType = contentType,
                     RedirectTo = redirectTo,
+                    RedirectCount = redirects,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
                     RobotsMeta = xRobots
                 };
@@ -73,9 +84,11 @@ public sealed class PageExtractor(
             var (html, size) = await ReadCappedAsync(response, ct);
             stopwatch.Stop();
 
-            return await _analyzer.AnalyzeAsync(
+            var page = await _analyzer.AnalyzeAsync(
                 html, url, fetch.BaseUri, status, contentType, redirectTo,
                 (int)stopwatch.ElapsedMilliseconds, size, xRobots, ct);
+
+            return page with { RedirectCount = redirects };
         }
         finally
         {
@@ -111,6 +124,48 @@ public sealed class PageExtractor(
         return await _analyzer.AnalyzeAsync(
             rendered.Html, url, fetch.BaseUri, rendered.StatusCode, rendered.ContentType, redirectTo,
             (int)stopwatch.ElapsedMilliseconds, size, rendered.XRobotsTag, ct);
+    }
+
+    /// <summary>
+    /// Gorsellerin indirme boyutunu HEAD ile olcer (Content-Length). Sayfa basina
+    /// <see cref="CrawlerOptions.MaxImageChecksPerPage"/> gorsele bakilir; olculemeyenler atlanir.
+    /// </summary>
+    private async Task<IReadOnlyList<MeasuredImage>> MeasureImagesAsync(
+        IReadOnlyList<string> imageUrls, CancellationToken ct)
+    {
+        if (_options.MaxImageChecksPerPage <= 0 || imageUrls.Count == 0) return [];
+
+        var measured = new List<MeasuredImage>();
+        foreach (var imageUrl in imageUrls.Take(_options.MaxImageChecksPerPage))
+        {
+            var bytes = _imageSizes.TryGetValue(imageUrl, out var cached)
+                ? cached
+                : _imageSizes[imageUrl] = await HeadContentLengthAsync(imageUrl, ct);
+
+            if (bytes is long size) measured.Add(new MeasuredImage(imageUrl, size));
+        }
+
+        return measured;
+    }
+
+    private async Task<long?> HeadContentLengthAsync(string imageUrl, CancellationToken ct)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Head, imageUrl);
+            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+
+            return response.IsSuccessStatusCode ? response.Content.Headers.ContentLength : null;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // Olculemeyen gorsel bulgu uretmez — crawl'i da dusurmez.
+            return null;
+        }
     }
 
     /// <summary>Govdeyi <see cref="CrawlerOptions.MaxHtmlBytes"/> ile sinirli okur.</summary>

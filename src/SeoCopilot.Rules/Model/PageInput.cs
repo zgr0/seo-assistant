@@ -15,12 +15,36 @@ public sealed record PageInput
     public int WordCount { get; init; }
     public bool HasCanonical { get; init; }
 
+    /// <summary>rel=canonical'in mutlak hali; kendini isaret etmiyorsa bulgu uretir.</summary>
+    public string? CanonicalUrl { get; init; }
+
+    /// <summary>Sayfaya varmak icin izlenen yonlendirme sayisi.</summary>
+    public int RedirectCount { get; init; }
+
     /// <summary>meta[name=robots] + X-Robots-Tag birlesimi.</summary>
     public string? RobotsMeta { get; init; }
+
+    /// <summary>Govdedeki basliklarin belge sirasindaki seviyeleri (h1 → 1, h2 → 2 ...).</summary>
+    public IReadOnlyList<int> HeadingLevels { get; init; } = [];
+
+    /// <summary>Ic linklerin anchor metinleri; bos/null olanlar da yer alir.</summary>
+    public IReadOnlyList<string?> InternalAnchorTexts { get; init; } = [];
 
     public int ImagesTotal { get; init; }
     public int ImagesNoAlt { get; init; }
 
+    /// <summary>Boyutu olculebilen gorseller. Olcum yapilmadiysa bos — kural sessiz kalir.</summary>
+    public IReadOnlyList<ImageSize> ImageSizes { get; init; } = [];
+
     /// <summary>JSON-LD / microdata icinden toplanan schema.org tipleri.</summary>
     public IReadOnlyList<string> SchemaTypes { get; init; } = [];
+
+    /// <summary>Sayfada bulunan Open Graph ozellik adlari (orn. "og:title").</summary>
+    public IReadOnlyList<string> OgTags { get; init; } = [];
+
+    /// <summary>&lt;html lang&gt; degeri.</summary>
+    public string? Lang { get; init; }
 }
+
+/// <summary>Tek bir gorselin olculmus indirme boyutu.</summary>
+public sealed record ImageSize(string Url, long Bytes);

@@ -25,17 +25,6 @@ public sealed class H1MultipleRule : ISeoRule
         page.H1.Count > 1 ? $"Sayfada {page.H1.Count} adet H1 var, tek olmali." : null;
 }
 
-public sealed class CanonicalRule : ISeoRule
-{
-    public string Code => "CANONICAL_MISSING";
-    public RuleCategory Category => RuleCategory.Indexability;
-    public Severity Severity => Severity.Low;
-    public int Weight => 3;
-
-    public string? Evaluate(PageInput page) =>
-        page.HasCanonical ? null : "rel=canonical link yok.";
-}
-
 public sealed class ThinContentRule : ISeoRule
 {
     public const int MinWords = 300;
@@ -51,17 +40,25 @@ public sealed class ThinContentRule : ISeoRule
             : null;
 }
 
-public sealed class HttpStatusRule : ISeoRule
+/// <summary>Baslik seviyeleri atlanmis mi — orn. h2'den sonra dogrudan h4.</summary>
+public sealed class HeadingHierarchyBrokenRule : ISeoRule
 {
-    public string Code => "HTTP_STATUS";
-    public RuleCategory Category => RuleCategory.Indexability;
-    public Severity Severity => Severity.Critical;
-    public int Weight => 10;
+    public string Code => "HEADING_HIERARCHY_BROKEN";
+    public RuleCategory Category => RuleCategory.Content;
+    public Severity Severity => Severity.Low;
+    public int Weight => 3;
 
-    public string? Evaluate(PageInput page) => page.StatusCode switch
+    public string? Evaluate(PageInput page)
     {
-        >= 200 and < 300 => null,
-        0 => "Sayfa getirilemedi (baglanti hatasi / zaman asimi).",
-        var s => $"Sayfa {s} donuyor."
-    };
+        var previous = 0;
+        foreach (var level in page.HeadingLevels)
+        {
+            if (previous > 0 && level > previous + 1)
+                return $"Baslik seviyesi atlanmis: h{previous} sonrasi h{level} geliyor.";
+
+            previous = level;
+        }
+
+        return null;
+    }
 }

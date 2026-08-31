@@ -21,4 +21,10 @@ public sealed class CrawlerOptions
 
     /// <summary>pages.main_text icin saklanacak azami karakter.</summary>
     public int MaxMainTextChars { get; set; } = 200_000;
+
+    /// <summary>
+    /// IMAGE_TOO_LARGE kurali icin sayfa basina HEAD ile boyutu olculecek azami gorsel sayisi.
+    /// 0 → olcum kapali, kural sessiz kalir. Sonuclar crawl boyunca URL bazinda onbellege alinir.
+    /// </summary>
+    public int MaxImageChecksPerPage { get; set; } = 10;
 }

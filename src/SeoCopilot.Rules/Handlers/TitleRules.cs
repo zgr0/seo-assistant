@@ -14,12 +14,11 @@ public sealed class MetaTitleMissingRule : ISeoRule
         string.IsNullOrWhiteSpace(page.Title) ? "Sayfada <title> etiketi yok." : null;
 }
 
-public sealed class MetaTitleLengthRule : ISeoRule
+public sealed class MetaTitleTooShortRule : ISeoRule
 {
     public const int Min = 30;
-    public const int Max = 60;
 
-    public string Code => "META_TITLE_LENGTH";
+    public string Code => "META_TITLE_TOO_SHORT";
     public RuleCategory Category => RuleCategory.Meta;
     public Severity Severity => Severity.Medium;
     public int Weight => 5;
@@ -28,11 +27,29 @@ public sealed class MetaTitleLengthRule : ISeoRule
     {
         var t = page.Title?.Trim();
         if (string.IsNullOrEmpty(t)) return null; // META_TITLE_MISSING ilgilenir
-        return t.Length switch
-        {
-            < Min => $"Title cok kisa ({t.Length} krk). Onerilen {Min}-{Max}.",
-            > Max => $"Title cok uzun ({t.Length} krk). Onerilen {Min}-{Max}.",
-            _ => null
-        };
+
+        return t.Length < Min
+            ? $"Title cok kisa ({t.Length} krk). En az {Min} karakter olmali."
+            : null;
+    }
+}
+
+public sealed class MetaTitleTooLongRule : ISeoRule
+{
+    public const int Max = 60;
+
+    public string Code => "META_TITLE_TOO_LONG";
+    public RuleCategory Category => RuleCategory.Meta;
+    public Severity Severity => Severity.Medium;
+    public int Weight => 5;
+
+    public string? Evaluate(PageInput page)
+    {
+        var t = page.Title?.Trim();
+        if (string.IsNullOrEmpty(t)) return null; // META_TITLE_MISSING ilgilenir
+
+        return t.Length > Max
+            ? $"Title cok uzun ({t.Length} krk). En fazla {Max} karakter olmali."
+            : null;
     }
 }

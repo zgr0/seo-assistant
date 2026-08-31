@@ -5,8 +5,9 @@ namespace SeoCopilot.Rules.Tests;
 
 public class ScoreCalculatorTests
 {
-    private static RuleViolation V(Severity severity, RuleCategory category = RuleCategory.Meta) =>
-        new("X", category, severity, 1, "msg");
+    private static RuleViolation V(
+        Severity severity, RuleCategory category = RuleCategory.Meta, string code = "X") =>
+        new(code, category, severity, 1, "msg");
 
     [Fact]
     public void No_violations_is_100()
@@ -55,6 +56,27 @@ public class ScoreCalculatorTests
     {
         // ortalama 90, crawl seviyesi bir High bulgu -15
         Assert.Equal(75m, ScoreCalculator.CalculateOverall([100, 80], [V(Severity.High)]));
+    }
+
+    [Fact]
+    public void Overall_penalises_each_crawl_rule_code_once()
+    {
+        // Ayni kuraldan 5 bulgu (orn. 5 oksuz sayfa) tek bir High cezasi kadar dusurur.
+        RuleViolation[] orphans = [.. Enumerable.Range(0, 5).Select(_ => V(Severity.High, code: "ORPHAN_PAGE"))];
+
+        Assert.Equal(85m, ScoreCalculator.CalculateOverall([100], orphans));
+    }
+
+    [Fact]
+    public void Overall_adds_up_distinct_crawl_rule_codes()
+    {
+        RuleViolation[] violations =
+        [
+            V(Severity.High, code: "ORPHAN_PAGE"),
+            V(Severity.Medium, code: "TOO_DEEP"),
+        ];
+
+        Assert.Equal(77m, ScoreCalculator.CalculateOverall([100], violations));
     }
 
     [Fact]

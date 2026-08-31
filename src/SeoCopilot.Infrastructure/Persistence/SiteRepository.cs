@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using SeoCopilot.Application.Abstractions;
 using SeoCopilot.Domain.Entities.Crawling;
+using SeoCopilot.Domain.Entities.Performance;
 using SeoCopilot.Domain.Entities.Sites;
 
 namespace SeoCopilot.Infrastructure.Persistence;
@@ -41,6 +42,9 @@ public sealed class SiteRepository(SeoCopilotDbContext db) : ISiteRepository
 
     public async Task AddPageLinksAsync(IEnumerable<PageLink> links, CancellationToken ct = default) =>
         await db.PageLinks.AddRangeAsync(links, ct);
+
+    public async Task AddVitalAsync(Vital vital, CancellationToken ct = default) =>
+        await db.Vitals.AddAsync(vital, ct);
 
     public async Task<IReadOnlyList<Page>> GetPagesAsync(
         Guid crawlId, int skip, int take, CancellationToken ct = default) =>

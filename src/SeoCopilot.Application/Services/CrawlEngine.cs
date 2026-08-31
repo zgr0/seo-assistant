@@ -5,6 +5,7 @@ using SeoCopilot.Application.Abstractions;
 using SeoCopilot.Application.Common;
 using SeoCopilot.Domain.Entities.Crawling;
 using SeoCopilot.Domain.Entities.Json;
+using SeoCopilot.Domain.Entities.Performance;
 using SeoCopilot.Domain.Entities.Rules;
 using SeoCopilot.Domain.Entities.Sites;
 using SeoCopilot.Domain.Enums;
@@ -21,15 +22,23 @@ public sealed class CrawlEngine(
     IPageExtractor extractor,
     IRobotsSource robotsSource,
     ISitemapSource sitemapSource,
+    IPageSpeedClient pageSpeed,
     IRuleRunner ruleRunner,
     ILogger<CrawlEngine> logger)
 {
     private const int SaveBatchSize = 50;
     private const int MaxUrlLength = 2048;
     private const int MaxAnchorLength = 512;
+
+    /// <summary>BLOCKED_BY_ROBOTS_TXT bulgusunda saklanan azami ornek sayisi.</summary>
+    private const int MaxBlockedTracked = 100;
+
     private static readonly TimeSpan PatternTimeout = TimeSpan.FromSeconds(1);
 
     private sealed record FrontierItem(Uri Url, int Depth);
+
+    /// <summary>Tohumlama ciktisi: baslangic kuyrugu ve sitemap gercekleri.</summary>
+    private sealed record Seed(List<FrontierItem> Frontier, HashSet<string> SitemapUrls, bool SitemapFound);
 
     /// <summary>
     /// Crawl'i bastan sona yurutur; pages / page_links / issues satirlarini ve crawl ozet
@@ -50,6 +59,7 @@ public sealed class CrawlEngine(
         var robots = await robotsSource.GetAsync(baseUri, ct);
 
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        var blocked = new HashSet<string>(StringComparer.Ordinal);
         var pages = new List<Page>();
         var links = new List<PageLink>();
         var pageFindings = new List<(Page Page, RuleFinding Finding)>();
@@ -57,7 +67,8 @@ public sealed class CrawlEngine(
         var truncated = false;
         var saved = 0;
 
-        var frontier = await SeedFrontierAsync(baseUri, robots, include, exclude, seen, maxPages, ct);
+        var seed = await SeedFrontierAsync(baseUri, robots, include, exclude, seen, blocked, maxPages, ct);
+        var frontier = seed.Frontier;
         logger.LogInformation(
             "Crawl {CrawlId} basliyor: {Seed} tohum URL, maxPages={MaxPages} maxDepth={MaxDepth} concurrency={Concurrency}",
             crawl.Id, frontier.Count, maxPages, maxDepth, concurrency);
@@ -109,7 +120,7 @@ public sealed class CrawlEngine(
                 foreach (var link in extracted.Links)
                 {
                     if (!link.IsInternal || link.IsNofollow) continue;
-                    if (!TryAccept(link.Url, baseUri, robots, include, exclude, seen)) continue;
+                    if (!TryAccept(link.Url, baseUri, robots, include, exclude, seen, blocked)) continue;
                     next.Add(new FrontierItem(link.Url, depth + 1));
                 }
             }
@@ -135,7 +146,19 @@ public sealed class CrawlEngine(
         ResolveLinkGraph(pages, links);
         await repository.AddPageLinksAsync(links, ct);
 
-        var crawlFindings = RunCrawlRules(pages, links);
+        var home = pages.FirstOrDefault(p => p.Url == baseUri.AbsoluteUri) ?? pages[0];
+        var vitals = await MeasureVitalsAsync(crawl, site, home, ct);
+
+        var siteFacts = new CrawlSiteFacts
+        {
+            SitemapFound = seed.SitemapFound,
+            SitemapUrls = seed.SitemapUrls,
+            BlockedUrls = blocked,
+            Vitals = vitals,
+            HomePageId = home.Id
+        };
+
+        var crawlFindings = RunCrawlRules(pages, links, home, siteFacts);
         WriteIssues(crawl, site, pageFindings, crawlFindings);
 
         var allFindings = pageFindings.Select(f => f.Finding)
@@ -162,26 +185,33 @@ public sealed class CrawlEngine(
 
     // --- tohumlama ---
 
-    private async Task<List<FrontierItem>> SeedFrontierAsync(
+    private async Task<Seed> SeedFrontierAsync(
         Uri baseUri, IRobotsPolicy robots,
         IReadOnlyList<Regex> include, IReadOnlyList<Regex> exclude,
-        HashSet<string> seen, int maxPages, CancellationToken ct)
+        HashSet<string> seen, HashSet<string> blocked, int maxPages, CancellationToken ct)
     {
         var frontier = new List<FrontierItem>();
 
         // Kok URL robots/desen filtrelerinden muaf — siteyi hic taramamak anlamsiz olurdu.
+        // Yine de robots kok sayfayi kapatiyorsa bu basli basina bir bulgudur.
+        if (!robots.IsAllowed(baseUri)) blocked.Add(baseUri.AbsoluteUri);
         if (seen.Add(baseUri.AbsoluteUri))
             frontier.Add(new FrontierItem(baseUri, 0));
 
+        var sitemapUrls = new HashSet<string>(StringComparer.Ordinal);
         foreach (var raw in await ReadSitemapsAsync(robots, baseUri, ct))
         {
-            if (frontier.Count >= maxPages) break;
-            if (UrlNormalizer.TryNormalize(raw, baseUri, out var url)
-                && TryAccept(url, baseUri, robots, include, exclude, seen))
+            if (!UrlNormalizer.TryNormalize(raw, baseUri, out var url)) continue;
+
+            // Desen filtreleri disinda kalsa bile sitemap'te gecmis sayilir.
+            sitemapUrls.Add(url.AbsoluteUri);
+
+            if (frontier.Count >= maxPages) continue;
+            if (TryAccept(url, baseUri, robots, include, exclude, seen, blocked))
                 frontier.Add(new FrontierItem(url, 0));
         }
 
-        return frontier;
+        return new Seed(frontier, sitemapUrls, sitemapUrls.Count > 0);
     }
 
     private async Task<IReadOnlyList<string>> ReadSitemapsAsync(
@@ -211,6 +241,54 @@ public sealed class CrawlEngine(
         return urls;
     }
 
+    // --- performans olcumu ---
+
+    /// <summary>
+    /// Kok sayfa icin PSI olcumu alir, vitals satirini yazar ve performans kurallarini besler.
+    /// API anahtari yoksa ya da PSI hata verirse crawl etkilenmez — olcum atlanir.
+    /// </summary>
+    private async Task<VitalsFacts?> MeasureVitalsAsync(Crawl crawl, Site site, Page home, CancellationToken ct)
+    {
+        if (!pageSpeed.IsConfigured) return null;
+
+        PageSpeedResult result;
+        try
+        {
+            result = await pageSpeed.AnalyzeAsync(home.Url, ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "PSI olcumu alinamadi: {Url}", home.Url);
+            return null;
+        }
+
+        await repository.AddVitalAsync(new Vital
+        {
+            SiteId = site.Id,
+            CrawlId = crawl.Id,
+            Url = home.Url,
+            Device = VitalsDevice.Mobile,
+            Source = VitalsSource.PsiLab,
+            LcpMs = Round(result.LargestContentfulPaintMs),
+            InpMs = Round(result.InteractionToNextPaintMs),
+            Cls = result.CumulativeLayoutShift is double cls ? (decimal)cls : null,
+            TtfbMs = Round(result.TimeToFirstByteMs),
+            FcpMs = Round(result.FirstContentfulPaintMs),
+            PerfScore = result.Performance
+        }, ct);
+
+        return new VitalsFacts(
+            result.LargestContentfulPaintMs,
+            result.CumulativeLayoutShift,
+            result.InteractionToNextPaintMs);
+    }
+
+    private static int? Round(double? value) => value is double v ? (int)Math.Round(v) : null;
+
     // --- getirme ---
 
     private async Task<ExtractedPage> SafeExtractAsync(Uri url, PageFetchOptions options, CancellationToken ct)
@@ -232,16 +310,24 @@ public sealed class CrawlEngine(
 
     // --- frontier filtreleri ---
 
-    /// <summary>URL taranabilir mi; kabul edilirse <paramref name="seen"/>'e eklenir.</summary>
+    /// <summary>
+    /// URL taranabilir mi; kabul edilirse <paramref name="seen"/>'e eklenir.
+    /// robots.txt yuzunden elenenler <paramref name="blocked"/>'a yazilir — BLOCKED_BY_ROBOTS_TXT
+    /// bulgusu buradan beslenir.
+    /// </summary>
     private static bool TryAccept(
         Uri url, Uri baseUri, IRobotsPolicy robots,
         IReadOnlyList<Regex> include, IReadOnlyList<Regex> exclude,
-        HashSet<string> seen)
+        HashSet<string> seen, HashSet<string> blocked)
     {
         var absolute = url.AbsoluteUri;
         if (absolute.Length > MaxUrlLength) return false;
         if (!UrlNormalizer.IsInternal(url, baseUri)) return false;
-        if (!robots.IsAllowed(url)) return false;
+        if (!robots.IsAllowed(url))
+        {
+            if (blocked.Count < MaxBlockedTracked) blocked.Add(absolute);
+            return false;
+        }
         if (exclude.Any(r => IsMatch(r, absolute))) return false;
         if (include.Count > 0 && !include.Any(r => IsMatch(r, absolute))) return false;
 
@@ -368,13 +454,22 @@ public sealed class CrawlEngine(
             page.InlinkCount = inlinks.GetValueOrDefault(page.Id);
     }
 
-    private IReadOnlyList<CrawlRuleFinding> RunCrawlRules(List<Page> pages, List<PageLink> links)
+    private IReadOnlyList<CrawlRuleFinding> RunCrawlRules(
+        List<Page> pages, List<PageLink> links, Page home, CrawlSiteFacts site)
     {
         var statusById = pages.ToDictionary(p => p.Id, p => p.StatusCode);
         var urlById = pages.ToDictionary(p => p.Id, p => p.Url);
 
         var pageFacts = pages
-            .Select(p => new CrawlPageFacts(p.Id, p.Url, p.StatusCode, p.ContentHash))
+            .Select(p => new CrawlPageFacts(p.Id, p.Url, p.StatusCode, p.ContentHash)
+            {
+                Depth = p.Depth,
+                InlinkCount = p.InlinkCount,
+                Title = p.Title,
+                MetaDescription = p.MetaDescription,
+                IsHome = p.Id == home.Id,
+                NoIndex = HasNoIndex(p.RobotsMeta)
+            })
             .ToList();
 
         var linkFacts = links
@@ -386,8 +481,11 @@ public sealed class CrawlEngine(
                 l.ToPageId is Guid id && statusById.TryGetValue(id, out var status) ? status : null))
             .ToList();
 
-        return ruleRunner.RunCrawl(pageFacts, linkFacts);
+        return ruleRunner.RunCrawl(pageFacts, linkFacts, site);
     }
+
+    private static bool HasNoIndex(string? robotsMeta) =>
+        robotsMeta?.Contains("noindex", StringComparison.OrdinalIgnoreCase) == true;
 
     private static void WriteIssues(
         Crawl crawl, Site site,
