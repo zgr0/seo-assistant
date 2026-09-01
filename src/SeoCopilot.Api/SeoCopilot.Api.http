@@ -1,6 +1,169 @@
-@SeoCopilot.Api_HostAddress = http://localhost:5094
+@host = http://localhost:5094
+@token = <login yanitindaki accessToken>
+@siteId = <site id>
+@crawlId = <crawl id>
 
-GET {{SeoCopilot.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### Kayit — yeni kiraci + owner
+POST {{host}}/api/auth/register
+Content-Type: application/json
+
+{ "email": "demo@example.com", "password": "sifre12345", "fullName": "Demo", "tenantName": "Demo Ajans" }
+
+### Giris
+POST {{host}}/api/auth/login
+Content-Type: application/json
+
+{ "email": "demo@example.com", "password": "sifre12345" }
+
+### Token yenile
+POST {{host}}/api/auth/refresh
+Content-Type: application/json
+
+{ "refreshToken": "<refreshToken>" }
+
+### Site ekle
+POST {{host}}/api/sites
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Demo", "baseUrl": "https://example.com" }
+
+### Siteler
+GET {{host}}/api/sites
+Authorization: Bearer {{token}}
+
+### Site guncelle
+PATCH {{host}}/api/sites/{{siteId}}
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "name": "Demo (yeni)", "crawlSettings": { "maxPages": 50 } }
+
+### Site sil
+DELETE {{host}}/api/sites/{{siteId}}
+Authorization: Bearer {{token}}
+
+### Dogrula
+POST {{host}}/api/sites/{{siteId}}/verify
+Authorization: Bearer {{token}}
+
+### Tarama baslat
+POST {{host}}/api/sites/{{siteId}}/crawls
+Authorization: Bearer {{token}}
+
+### Tarama gecmisi
+GET {{host}}/api/sites/{{siteId}}/crawls?page=1&size=20
+Authorization: Bearer {{token}}
+
+### Tarama durumu (FE polling)
+GET {{host}}/api/crawls/{{crawlId}}
+Authorization: Bearer {{token}}
+
+### Tarama iptal
+POST {{host}}/api/crawls/{{crawlId}}/cancel
+Authorization: Bearer {{token}}
+
+### Sayfalar — filtreli
+GET {{host}}/api/crawls/{{crawlId}}/pages?minStatusCode=400&page=1&size=50
+Authorization: Bearer {{token}}
+
+### Bulgular — filtreli
+GET {{host}}/api/crawls/{{crawlId}}/issues?severity=critical&category=meta&page=1&size=50
+Authorization: Bearer {{token}}
+
+### Onceki tarama ile kiyas
+GET {{host}}/api/crawls/{{crawlId}}/compare/<onceki crawl id>
+Authorization: Bearer {{token}}
+
+### Sayfa detayi
+GET {{host}}/api/pages/<page id>
+Authorization: Bearer {{token}}
+
+### Bulguyu gormezden gel
+POST {{host}}/api/issues/1/ignore
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "reason": "Bilincli tercih", "applyToSite": true }
+
+### Bulguyu geri ac
+POST {{host}}/api/issues/1/reopen
+Authorization: Bearer {{token}}
+
+### Marka profilleri
+GET {{host}}/api/brand-profiles
+Authorization: Bearer {{token}}
+
+### Marka profili ekle
+POST {{host}}/api/brand-profiles
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Ana marka",
+  "tone": "samimi",
+  "addressForm": "sen",
+  "emojiUsage": "light",
+  "defaultHashtags": ["#seo"],
+  "isDefault": true
+}
+
+### Platform seed listesi
+GET {{host}}/api/platform-profiles
+Authorization: Bearer {{token}}
+
+### Icerik uret
+POST {{host}}/api/content/generate
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "meta_description",
+  "pageId": "<page id>",
+  "input": { "keywords": ["seo araci", "site analizi"] },
+  "variantCount": 3
+}
+
+### Toplu icerik uret
+POST {{host}}/api/content/generate-batch
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "type": "social_post", "platformCode": "instagram", "pageIds": ["<page id>"] }
+
+### Uretim durumu
+GET {{host}}/api/content/jobs/<job id>
+Authorization: Bearer {{token}}
+
+### Uretim gecmisi
+GET {{host}}/api/content/jobs?type=social_post&page=1&size=20
+Authorization: Bearer {{token}}
+
+### Varyanti favorile
+POST {{host}}/api/content/variants/<variant id>/favorite
+Authorization: Bearer {{token}}
+
+### CSV disa aktar
+GET {{host}}/api/content/export.csv?jobIds=<job id>
+Authorization: Bearer {{token}}
+
+### Core Web Vitals
+GET {{host}}/api/sites/{{siteId}}/vitals
+Authorization: Bearer {{token}}
+
+### Rapor uret
+POST {{host}}/api/sites/{{siteId}}/reports
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{ "crawlId": "{{crawlId}}" }
+
+### Rapor indir
+GET {{host}}/api/reports/<report id>/download
+Authorization: Bearer {{token}}
+
+### Pano
+GET {{host}}/api/dashboard
+Authorization: Bearer {{token}}
 
 ###

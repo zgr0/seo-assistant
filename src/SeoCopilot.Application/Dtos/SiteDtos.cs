@@ -5,6 +5,18 @@ namespace SeoCopilot.Application.Dtos;
 
 public record CreateSiteRequest(string Name, string BaseUrl, CrawlSettingsDto? CrawlSettings = null);
 
+/// <summary>
+/// PATCH /sites/{id} govdesi — kismi guncelleme. Verilmeyen alanlar korunur.
+/// <paramref name="BaseUrl"/> degisirse site yeniden dogrulanmalidir.
+/// </summary>
+public record UpdateSiteRequest(
+    string? Name = null,
+    string? BaseUrl = null,
+    bool? IsActive = null,
+    string? ScheduleCron = null,
+    Guid? DefaultBrandProfileId = null,
+    CrawlSettingsDto? CrawlSettings = null);
+
 /// <summary>Kismi guncellemeye izin verir — verilmeyen alanlar mevcut degeri korur.</summary>
 public record CrawlSettingsDto(
     int? MaxPages = null,
@@ -41,7 +53,9 @@ public record SiteDto(
     DateTimeOffset? VerifiedAt,
     bool IsActive,
     DateTimeOffset CreatedAt,
-    CrawlSettingsDto CrawlSettings)
+    CrawlSettingsDto CrawlSettings,
+    string? ScheduleCron = null,
+    Guid? DefaultBrandProfileId = null)
 {
     public static SiteDto From(Site s) => new(
         s.Id,
@@ -52,7 +66,9 @@ public record SiteDto(
         s.VerifiedAt,
         s.IsActive,
         s.CreatedAt,
-        CrawlSettingsDto.From(s.CrawlSettings));
+        CrawlSettingsDto.From(s.CrawlSettings),
+        s.ScheduleCron,
+        s.DefaultBrandProfileId);
 }
 
 /// <summary><paramref name="MetaTag"/> siteye yapistirilacak hazir etiket.</summary>

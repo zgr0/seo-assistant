@@ -87,12 +87,24 @@ Tum `/api/sites` ve `/api/crawls` uclari token'daki `tenant_id` ile sinirlanir �
 | `POST /api/sites` | `{name,baseUrl,crawlSettings?}` → site + `verificationToken`. `baseUrl` normalize edilir (sema+host, sonda `/` yok) |
 | `GET /api/sites` | Kiracinin siteleri |
 | `GET /api/sites/{id}` | Tek site |
+| `PATCH /api/sites/{id}` | Kismi guncelleme: `name`, `baseUrl`, `isActive`, `scheduleCron`, `defaultBrandProfileId`, `crawlSettings`. **`baseUrl` degisirse dogrulama sifirlanir ve token yenilenir** |
+| `DELETE /api/sites/{id}` | Siteyi ve tarama gecmisini siler (`204`) |
 | `POST /api/sites/{id}/verify` | Kok sayfada `<meta name="seocopilot-verification" content="...">` arar; bulursa `verified_at` yazar |
 | `PATCH /api/sites/{id}/crawl-settings` | Kismi guncelleme — verilmeyen alanlar korunur |
-| `POST /api/crawls` | `{siteId}` → crawl kuyruga girer (Hangfire). Site dogrulanmamissa `400` |
-| `GET /api/crawls/{id}` | Ozet: durum, skorlar, `issue_counts`, ilk 100 bulgu |
-| `GET /api/crawls/{id}/pages?page=&size=` | Sayfalanmis sayfa listesi (size en fazla 200) |
-| `GET /api/crawls/{id}/issues?minSeverity=` | Bulgular; `minSeverity` = `low\|medium\|high\|critical` |
+| `POST /api/sites/{id}/crawls` | Tarama baslatir → `{crawlId}`. Site dogrulanmamissa `400` |
+| `GET /api/sites/{id}/crawls?page=&size=` | Sitenin tarama gecmisi, sayfalanmis |
+| `POST /api/crawls` | `{siteId}` ile ayni islem (eski ucu, korunuyor) |
+| `GET /api/crawls/{id}` | Ozet: durum, skorlar, `issue_counts`, ilk 100 bulgu — FE bunu yoklar |
+| `POST /api/crawls/{id}/cancel` | Iptal isaretini yazar; calisan worker sonraki derinlik gecisinde durur. Bitmis tarama icin `400` |
+| `GET /api/crawls/{id}/pages` | Filtreli + sayfalanmis: `url`, `statusCode`, `minStatusCode`, `maxStatusCode`, `depth`, `hasIssues`, `page`, `size` |
+| `GET /api/crawls/{id}/issues` | Filtreli + sayfalanmis: `severity`, `minSeverity`, `category`, `ruleCode`, `status`, `pageId`, `page`, `size` |
+| `GET /api/crawls/{id}/compare/{prevId}` | Iki tarama farki: skor/sayfa/onem deltasi, yeni ve cozulen bulgular |
+| `GET /api/pages/{id}` | Sayfa detayi: kolonlar + `ogData`, `mainText` (ilk 20 000 karakter) ve sayfanin bulgulari |
+| `POST /api/issues/{id}/ignore` | `{reason, applyToSite}` → bulguyu kapatir, `issue_ignores` yazar. `applyToSite` ayni kuralin tum acik bulgularini da kapatir |
+| `POST /api/issues/{id}/reopen` | Bulguyu geri acar, susturma kaydini siler |
+
+Sayfalama zarfi her yerde ayni: `{ items, total, page, size }`; `size` en fazla 200.
+Enum filtreleri hem `structured_data` hem `StructuredData` bicimini kabul eder; tanimsiz deger `400` doner.
 
 ### Tarama motoru
 
@@ -139,6 +151,44 @@ Skor: severity basina sabit ceza (critical 25, high 15, medium 8, low 3) 100'den
 **kural kodu basina bir kez** uygulanir, boylece 300 oksuz sayfa skoru tek basina sifirlamaz.
 `category_scores` kategori basina ayni formul (ceza sayfa sayisina bolunur);
 `scoring_snapshot` kullanilan ceza tablosunu dondurur.
+
+## Marka & icerik uretimi
+
+| Endpoint | Aciklama |
+| --- | --- |
+| `GET /api/brand-profiles?siteId=` | Kiracinin marka profilleri; `siteId` verilirse o siteye ozel + kiraci geneli profiller |
+| `POST /api/brand-profiles` | `{name, siteId?, tone?, addressForm?, emojiUsage?, bannedPhrases[], defaultHashtags[], targetAudience?, extraContext?, isDefault?}` |
+| `PATCH /api/brand-profiles/{id}` | Kismi guncelleme |
+| `GET /api/platform-profiles` | Seed listesi (instagram, facebook, x, linkedin) — karakter/hashtag sinirlari ve prompt notu |
+| `POST /api/content/generate` | `{type, platformCode?, pageId?, brandProfileId?, input, variantCount?}` → is kuyruga girer, `201` + is kaydi |
+| `POST /api/content/generate-batch` | `{type, platformCode, pageIds[], brandProfileId?, input?}` → sayfa basina bir is, `202` + `{jobIds}` |
+| `GET /api/content/jobs/{id}` | Is durumu + varyantlar (FE polling) |
+| `GET /api/content/jobs` | Gecmis uretimler; `type`, `platformCode`, `status`, `siteId`, `pageId`, `page`, `size` |
+| `POST /api/content/variants/{id}/favorite` | Govdesiz cagri favoriye ekler; `{isFavorite:false}` cikarir |
+| `GET /api/content/export.csv?jobIds=a,b,c` | Varyantlari CSV olarak indirir (UTF-8 BOM, Excel uyumlu) |
+
+`type` = `title` · `meta_description` · `h1` · `product_description` · `blog_outline` · `fix_advice` ·
+`social_post` · `social_batch` · `hashtag_set`. Son uc tur icin `platformCode` zorunludur.
+
+Uretim **senkron degildir**: istek `content_jobs` satirini `queued` olarak yazar ve Hangfire'a atar; worker
+marka profilini, platform kurallarini ve (verilmisse) sayfa baglamini prompt'a enjekte edip Anthropic
+Messages API'yi cagirir. Model yaniti `{"variants":[{angle,body,hashtags,cta}]}` semasinda beklenir; sema
+disi yanit bosa gitmesin diye ham metin tek varyant olarak yazilir. `Anthropic:ApiKey` tanimli degilse is
+`failed` olur ve hata mesaji `content_jobs.error_message`'a yazilir.
+
+## Rapor, performans ve pano
+
+| Endpoint | Aciklama |
+| --- | --- |
+| `GET /api/sites/{id}/vitals?url=&take=` | PSI olcum gecmisi: `{latest, history}` |
+| `POST /api/sites/{id}/reports` | `{crawlId?, compareCrawlId?, periodStart?, periodEnd?}` — `crawlId` verilmezse son tarama. Rapor kuyruga girer |
+| `GET /api/sites/{id}/reports` | Sitenin raporlari |
+| `GET /api/reports/{id}` | Rapor durumu + hazirsa `downloadUrl` |
+| `GET /api/reports/{id}/download` | Rapor dosyasi (HTML). Hazir degilse `400` |
+| `GET /api/dashboard` | Kiraci ozeti: site kartlari (son skor + onceki taramaya gore degisim), acik bulgu dagilimi, son taramalar, son icerik uretimleri |
+
+Rapor HTML olarak uretilir (harici varlik icermez, tarayicidan PDF'e basilabilir) ve
+`Reports:Directory` altina `reports/{id}.html` olarak yazilir.
 
 ## Veritabani
 
@@ -205,4 +255,5 @@ ve gercek Postgres uzerinde ucdan uca calistirir.
 | `Crawler:MaxImageChecksPerPage` | `IMAGE_TOO_LARGE` icin sayfa basina HEAD ile olculecek gorsel sayisi (varsayilan 10, `0` → kapali) |
 | `Anthropic:ApiKey` | Anthropic Messages API |
 | `PageSpeed:ApiKey` | Google PSI. Bos ise performans kurallari (`LCP_POOR`/`CLS_POOR`/`INP_POOR`) hic calismaz |
+| `Reports:Directory` | Uretilen rapor dosyalarinin kok dizini (varsayilan `App_Data/reports`) |
 | `Smtp:*` | Rapor maili |

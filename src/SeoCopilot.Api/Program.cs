@@ -24,9 +24,11 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddCrawler(builder.Configuration);
 
-// Rules koprusu + kuyruk
+// Rules koprusu + kuyruklar
 builder.Services.AddSingleton<IRuleRunner, RuleRunnerAdapter>();
 builder.Services.AddScoped<ICrawlQueue, HangfireCrawlQueue>();
+builder.Services.AddScoped<IContentQueue, HangfireContentQueue>();
+builder.Services.AddScoped<IReportQueue, HangfireReportQueue>();
 
 // --- Hangfire ---
 builder.Services.AddHangfire(cfg => cfg
@@ -81,6 +83,12 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 app.MapAuthEndpoints();
 app.MapSiteEndpoints();
 app.MapCrawlEndpoints();
+app.MapPageEndpoints();
+app.MapIssueEndpoints();
+app.MapBrandProfileEndpoints();
+app.MapContentEndpoints();
+app.MapReportEndpoints();
+app.MapDashboardEndpoints();
 
 app.Run();
 

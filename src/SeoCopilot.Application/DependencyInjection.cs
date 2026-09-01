@@ -11,6 +11,12 @@ public static class DependencyInjection
         services.AddScoped<CrawlOrchestrator>();
         services.AddScoped<SiteService>();
         services.AddScoped<AuthService>();
+        services.AddScoped<IssueService>();
+        services.AddScoped<BrandProfileService>();
+        services.AddScoped<ContentService>();
+        services.AddScoped<ReportService>();
+        services.AddScoped<VitalsService>();
+        services.AddScoped<DashboardService>();
         return services;
     }
 }

@@ -44,7 +44,12 @@ public sealed class CrawlEngine(
     /// Crawl'i bastan sona yurutur; pages / page_links / issues satirlarini ve crawl ozet
     /// alanlarini yazar. Durumu doner — StartedAt/FinishedAt cagirana ait.
     /// </summary>
-    public async Task<CrawlStatus> RunAsync(Crawl crawl, Site site, CancellationToken ct = default)
+    /// <param name="cancelRequested">
+    /// Her derinlik gecisinde sorulur; true donerse tarama o ana kadarki verilerle kapatilir
+    /// ve <see cref="CrawlStatus.Cancelled"/> donulur. Kullanicinin iptal istegi buradan gelir.
+    /// </param>
+    public async Task<CrawlStatus> RunAsync(
+        Crawl crawl, Site site, Func<CancellationToken, Task<bool>>? cancelRequested, CancellationToken ct = default)
     {
         var settings = site.CrawlSettings;
         var baseUri = ResolveBaseUri(site.BaseUrl);
@@ -65,6 +70,7 @@ public sealed class CrawlEngine(
         var pageFindings = new List<(Page Page, RuleFinding Finding)>();
         var pageScores = new List<int>();
         var truncated = false;
+        var cancelled = false;
         var saved = 0;
 
         var seed = await SeedFrontierAsync(baseUri, robots, include, exclude, seen, blocked, maxPages, ct);
@@ -76,6 +82,13 @@ public sealed class CrawlEngine(
         for (var depth = 0; depth <= maxDepth && frontier.Count > 0; depth++)
         {
             ct.ThrowIfCancellationRequested();
+
+            if (cancelRequested is not null && await cancelRequested(ct))
+            {
+                logger.LogInformation("Crawl {CrawlId} kullanici tarafindan iptal edildi", crawl.Id);
+                cancelled = true;
+                break;
+            }
 
             var remaining = maxPages - pages.Count;
             if (remaining <= 0)
@@ -139,7 +152,11 @@ public sealed class CrawlEngine(
         if (frontier.Count > 0) truncated = true;
 
         if (pages.Count == 0)
+        {
+            // Tek sayfa bile cekilmeden iptal edildiyse bu bir hata degil.
+            if (cancelled) return CrawlStatus.Cancelled;
             throw new InvalidOperationException("Hicbir sayfa taranamadi — base_url gecersiz olabilir");
+        }
 
         await PersistPagesAsync(pages, saved, crawl, ct);
 
@@ -180,6 +197,7 @@ public sealed class CrawlEngine(
             "Crawl {CrawlId} bitti: {Crawled}/{Discovered} sayfa, {Links} link, {Issues} bulgu, skor {Score}",
             crawl.Id, crawl.PagesCrawled, crawl.PagesDiscovered, links.Count, crawl.Issues.Count, crawl.OverallScore);
 
+        if (cancelled) return CrawlStatus.Cancelled;
         return truncated ? CrawlStatus.Partial : CrawlStatus.Completed;
     }
 

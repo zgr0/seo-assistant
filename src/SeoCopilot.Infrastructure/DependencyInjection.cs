@@ -6,6 +6,7 @@ using SeoCopilot.Infrastructure.Auth;
 using SeoCopilot.Infrastructure.Clients;
 using SeoCopilot.Infrastructure.Email;
 using SeoCopilot.Infrastructure.Persistence;
+using SeoCopilot.Infrastructure.Reporting;
 
 namespace SeoCopilot.Infrastructure;
 
@@ -21,6 +22,11 @@ public static class DependencyInjection
 
         services.AddScoped<ISiteRepository, SiteRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IContentRepository, ContentRepository>();
+        services.AddScoped<IReportRepository, ReportRepository>();
+
+        services.Configure<ReportStorageOptions>(config.GetSection(ReportStorageOptions.Section));
+        services.AddSingleton<IReportStorage, FileReportStorage>();
 
         services.Configure<JwtOptions>(config.GetSection(JwtOptions.Section));
         services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();

@@ -62,6 +62,55 @@ public sealed class SiteService(ISiteRepository repository, ISiteVerifier verifi
         return new VerifySiteResponse(site.VerifiedAt is not null, site.VerifiedAt, metaTag);
     }
 
+    /// <summary>
+    /// Kismi guncelleme. <c>baseUrl</c> degisirse dogrulama sifirlanir ve yeni bir
+    /// dogrulama anahtari uretilir — eski token yeni alan adinda gecerli sayilamaz.
+    /// </summary>
+    public async Task<SiteDto> UpdateAsync(
+        Guid siteId, Guid tenantId, UpdateSiteRequest request, CancellationToken ct = default)
+    {
+        var site = await RequireSiteAsync(siteId, tenantId, ct);
+
+        if (request.Name is not null)
+        {
+            if (string.IsNullOrWhiteSpace(request.Name))
+                throw new InvalidOperationException("Site adi bos olamaz");
+            site.Name = request.Name.Trim();
+        }
+
+        if (request.BaseUrl is not null)
+        {
+            var baseUrl = UrlNormalizer.NormalizeSiteBaseUrl(request.BaseUrl)
+                ?? throw new InvalidOperationException("Gecersiz site adresi — http/https bekleniyor");
+
+            if (!string.Equals(baseUrl, site.BaseUrl, StringComparison.Ordinal))
+            {
+                site.BaseUrl = baseUrl;
+                site.VerifiedAt = null;
+                site.VerificationToken = RandomNumberGenerator.GetHexString(32, lowercase: true);
+            }
+        }
+
+        if (request.IsActive is bool isActive) site.IsActive = isActive;
+        if (request.ScheduleCron is not null)
+            site.ScheduleCron = string.IsNullOrWhiteSpace(request.ScheduleCron) ? null : request.ScheduleCron.Trim();
+        if (request.DefaultBrandProfileId is Guid brandId)
+            site.DefaultBrandProfileId = brandId == Guid.Empty ? null : brandId;
+
+        request.CrawlSettings?.ApplyTo(site.CrawlSettings);
+
+        await repository.SaveChangesAsync(ct);
+        return SiteDto.From(site);
+    }
+
+    /// <summary>Siteyi ve bagli tarama gecmisini siler.</summary>
+    public async Task DeleteAsync(Guid siteId, Guid tenantId, CancellationToken ct = default)
+    {
+        var site = await RequireSiteAsync(siteId, tenantId, ct);
+        await repository.RemoveSiteAsync(site, ct);
+        await repository.SaveChangesAsync(ct);
+    }
+
     public async Task<SiteDto> UpdateCrawlSettingsAsync(
         Guid siteId, Guid tenantId, CrawlSettingsDto request, CancellationToken ct = default)
     {

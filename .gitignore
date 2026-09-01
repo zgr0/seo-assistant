@@ -75,6 +75,9 @@ dist/
 playwright-report/
 test-results/
 
+# Uretilen rapor dosyalari (Reports:Directory)
+App_Data/
+
 # Local secrets (use dotnet user-secrets, not appsettings)
 appsettings.*.Local.json
 secrets.json

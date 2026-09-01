@@ -44,6 +44,36 @@ public record CrawlSummaryDto(
             .Select(IssueDto.From)]);
 }
 
+/// <summary>Crawl listesi satiri — bulgu detayi tasimaz.</summary>
+public record CrawlListItemDto(
+    Guid CrawlId,
+    Guid SiteId,
+    string Status,
+    string Trigger,
+    decimal? OverallScore,
+    int PagesDiscovered,
+    int PagesCrawled,
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? FinishedAt,
+    string? ErrorMessage,
+    IReadOnlyDictionary<string, int> IssueCounts,
+    DateTimeOffset CreatedAt)
+{
+    public static CrawlListItemDto From(Crawl c) => new(
+        c.Id,
+        c.SiteId,
+        c.Status.ToString(),
+        c.Trigger.ToString(),
+        c.OverallScore,
+        c.PagesDiscovered,
+        c.PagesCrawled,
+        c.StartedAt,
+        c.FinishedAt,
+        c.ErrorMessage,
+        c.IssueCounts,
+        c.CreatedAt);
+}
+
 public record IssueDto(
     long Id,
     string RuleCode,
@@ -51,6 +81,10 @@ public record IssueDto(
     int Weight,
     string Status,
     Guid? PageId,
+    string? PageUrl,
+    string? Category,
+    string? RuleTitle,
+    string? HowToFix,
     string? Found,
     string? Expected,
     IReadOnlyList<string> SampleUrls)
@@ -62,10 +96,29 @@ public record IssueDto(
         i.Weight,
         i.Status.ToString(),
         i.PageId,
+        i.Page?.Url,
+        i.Rule?.Category.ToString(),
+        i.Rule?.TitleTr,
+        i.Rule?.HowToFixTr,
         i.Evidence.Found,
         i.Evidence.Expected,
         i.Evidence.SampleUrls);
 }
+
+/// <summary>Iki crawl arasindaki fark — FE'nin "onceki taramaya gore" panosu.</summary>
+public record CrawlCompareDto(
+    Guid CurrentCrawlId,
+    Guid PreviousCrawlId,
+    decimal? CurrentScore,
+    decimal? PreviousScore,
+    decimal? ScoreDelta,
+    int CurrentPagesCrawled,
+    int PreviousPagesCrawled,
+    IReadOnlyDictionary<string, int> IssueCountDelta,
+    IReadOnlyDictionary<string, decimal> CategoryScoreDelta,
+    IReadOnlyList<IssueDto> NewIssues,
+    IReadOnlyList<IssueDto> ResolvedIssues,
+    int UnchangedIssueCount);
 
 public record PageDto(
     Guid Id,
@@ -120,4 +173,23 @@ public record PageDto(
         p.OutlinkExternal,
         p.Lang,
         p.CrawledAt);
+}
+
+/// <summary>Tek sayfa detayi — liste DTO'suna ana metin, OG verisi ve bulgular eklenir.</summary>
+public record PageDetailDto(
+    PageDto Page,
+    Guid CrawlId,
+    string? OgData,
+    string? MainText,
+    IReadOnlyList<IssueDto> Issues)
+{
+    /// <summary>Detayda dondurulen azami ana metin uzunlugu.</summary>
+    public const int MaxMainTextChars = 20_000;
+
+    public static PageDetailDto From(Page p, IEnumerable<Domain.Entities.Rules.Issue> issues) => new(
+        PageDto.From(p),
+        p.CrawlId,
+        p.OgData,
+        p.MainText is { Length: > MaxMainTextChars } text ? text[..MaxMainTextChars] : p.MainText,
+        [.. issues.OrderByDescending(i => i.Severity).Select(IssueDto.From)]);
 }
