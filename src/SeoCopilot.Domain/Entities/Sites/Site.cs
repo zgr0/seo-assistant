@@ -1,6 +1,5 @@
 using SeoCopilot.Domain.Entities.Crawling;
 using SeoCopilot.Domain.Entities.Json;
-using SeoCopilot.Domain.Enums;
 
 namespace SeoCopilot.Domain.Entities.Sites;
 
@@ -13,12 +12,6 @@ public class Site
 
     /// <summary>Normalize edilmis, sonda / olmayan kok URL.</summary>
     public string BaseUrl { get; set; } = string.Empty;
-
-    public VerificationMethod VerificationMethod { get; set; } = VerificationMethod.MetaTag;
-    public string? VerificationToken { get; set; }
-
-    /// <summary>null ise tarama baslatilamaz.</summary>
-    public DateTimeOffset? VerifiedAt { get; set; }
 
     public CrawlSettings CrawlSettings { get; set; } = new();
 

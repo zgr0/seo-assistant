@@ -12,7 +12,6 @@ internal sealed class SiteConfig : IEntityTypeConfiguration<Site>
         b.HasKey(x => x.Id);
         b.Property(x => x.Name).HasMaxLength(200).IsRequired();
         b.Property(x => x.BaseUrl).HasMaxLength(2048).IsRequired();
-        b.Property(x => x.VerificationToken).HasMaxLength(128);
         b.Property(x => x.ScheduleCron).HasMaxLength(64);
         b.Property(x => x.IsActive).HasDefaultValue(true);
         b.Property(x => x.CreatedAt).HasDefaultValueSql("now()");

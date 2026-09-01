@@ -35,7 +35,6 @@ public class CrawlEngineTests(PostgresFixture fixture) : IClassFixture<PostgresF
         {
             var db = scope.ServiceProvider.GetRequiredService<SeoCopilotDbContext>();
             var entity = await db.Sites.FirstAsync(s => s.Id == site.Id);
-            entity.VerifiedAt = DateTimeOffset.UtcNow;
             entity.CrawlSettings = settings ?? new CrawlSettings { DelayMs = 0 };
             await db.SaveChangesAsync();
         }

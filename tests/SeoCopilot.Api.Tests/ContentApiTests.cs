@@ -228,13 +228,11 @@ public class ContentApiTests(PostgresFixture fixture) : IClassFixture<PostgresFi
         await using var factory = fixture.CreateFactory();
         var (client, _) = await TestAuth.RegisterAsync(factory, "dashboard@example.com");
         var site = await SiteManagementApiTests.CreateSiteAsync(client, "Pano", "https://pano.example");
-        await SiteManagementApiTests.MarkVerifiedAsync(factory, site.Id);
         await client.PostAsJsonAsync("/api/content/generate", new { type = "title" });
 
         var body = await client.GetFromJsonAsync<JsonElement>("/api/dashboard");
 
         Assert.Equal(1, body.GetProperty("siteCount").GetInt32());
-        Assert.Equal(1, body.GetProperty("verifiedSiteCount").GetInt32());
         Assert.Equal(1, body.GetProperty("sites").GetArrayLength());
         Assert.Equal(site.Id, body.GetProperty("sites")[0].GetProperty("siteId").GetGuid());
         Assert.Equal(JsonValueKind.Null, body.GetProperty("sites")[0].GetProperty("lastCrawlId").ValueKind);

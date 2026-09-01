@@ -6,7 +6,7 @@ namespace SeoCopilot.Api.Tests;
 public class SitesApiTests(PostgresFixture fixture) : IClassFixture<PostgresFixture>
 {
     [Fact]
-    public async Task Create_site_returns_201_with_verification_token()
+    public async Task Create_site_returns_201_with_normalised_base_url()
     {
         await using var factory = fixture.CreateFactory();
         var (client, _) = await TestAuth.RegisterAsync(factory, "sites-create@example.com");
@@ -17,8 +17,6 @@ public class SitesApiTests(PostgresFixture fixture) : IClassFixture<PostgresFixt
         var site = await res.Content.ReadFromJsonAsync<SiteResponse>();
         Assert.NotNull(site);
         Assert.Equal("https://example.com", site!.BaseUrl); // normalize edilir, sonda / yok
-        Assert.False(string.IsNullOrWhiteSpace(site.VerificationToken));
-        Assert.Null(site.VerifiedAt);
         Assert.Equal(500, site.CrawlSettings.MaxPages);
     }
 
@@ -96,50 +94,30 @@ public class SitesApiTests(PostgresFixture fixture) : IClassFixture<PostgresFixt
     }
 
     [Fact]
-    public async Task Verify_fails_when_the_meta_tag_is_absent()
+    public async Task Crawl_starts_right_after_the_site_is_created()
     {
         await using var webSite = await TestWebSite.StartAsync();
         await using var factory = fixture.CreateFactory();
-        var (client, _) = await TestAuth.RegisterAsync(factory, "sites-verify-fail@example.com");
-
-        var created = await client.PostAsJsonAsync("/api/sites", new { name = "Dogrulanmamis", baseUrl = webSite.BaseUrl });
-        var site = await created.Content.ReadFromJsonAsync<SiteResponse>();
-
-        var res = await client.PostAsJsonAsync($"/api/sites/{site!.Id}/verify", new { });
-        var body = await res.Content.ReadFromJsonAsync<VerifyResponse>();
-
-        Assert.False(body!.Verified);
-        Assert.Contains("seocopilot-verification", body.MetaTag);
-    }
-
-    [Fact]
-    public async Task Verify_succeeds_when_the_meta_tag_is_present()
-    {
-        await using var webSite = await TestWebSite.StartAsync();
-        await using var factory = fixture.CreateFactory();
-        var (client, _) = await TestAuth.RegisterAsync(factory, "sites-verify-ok@example.com");
-
-        var created = await client.PostAsJsonAsync("/api/sites", new { name = "Dogrulanmis", baseUrl = webSite.BaseUrl });
-        var site = await created.Content.ReadFromJsonAsync<SiteResponse>();
-        webSite.VerificationToken = site!.VerificationToken;
-
-        var res = await client.PostAsJsonAsync($"/api/sites/{site.Id}/verify", new { });
-        var body = await res.Content.ReadFromJsonAsync<VerifyResponse>();
-
-        Assert.True(body!.Verified);
-        Assert.NotNull(body.VerifiedAt);
-    }
-
-    [Fact]
-    public async Task Crawl_cannot_start_before_verification()
-    {
-        await using var factory = fixture.CreateFactory();
-        var (client, _) = await TestAuth.RegisterAsync(factory, "sites-unverified-crawl@example.com");
-        var created = await client.PostAsJsonAsync("/api/sites", new { name = "Bekleyen", baseUrl = "https://bekleyen.example" });
+        var (client, _) = await TestAuth.RegisterAsync(factory, "sites-crawl-start@example.com");
+        var created = await client.PostAsJsonAsync("/api/sites", new { name = "Yeni", baseUrl = webSite.BaseUrl });
         var site = await created.Content.ReadFromJsonAsync<SiteResponse>();
 
         var res = await client.PostAsJsonAsync("/api/crawls", new { siteId = site!.Id });
 
-        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        Assert.Equal(HttpStatusCode.Created, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task Crawl_for_another_tenants_site_is_404()
+    {
+        await using var factory = fixture.CreateFactory();
+        var (owner, _) = await TestAuth.RegisterAsync(factory, "sites-crawl-owner@example.com");
+        var (stranger, _) = await TestAuth.RegisterAsync(factory, "sites-crawl-stranger@example.com");
+        var created = await owner.PostAsJsonAsync("/api/sites", new { name = "Gizli", baseUrl = "https://gizli-crawl.example" });
+        var site = await created.Content.ReadFromJsonAsync<SiteResponse>();
+
+        var res = await stranger.PostAsJsonAsync("/api/crawls", new { siteId = site!.Id });
+
+        Assert.Equal(HttpStatusCode.NotFound, res.StatusCode);
     }
 }

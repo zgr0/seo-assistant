@@ -26,9 +26,6 @@ public sealed class CrawlOrchestrator(
         var site = await repository.GetSiteForTenantAsync(request.SiteId, tenantId, ct)
             ?? throw new NotFoundException($"Site {request.SiteId} bulunamadi");
 
-        if (site.VerifiedAt is null)
-            throw new InvalidOperationException("Site dogrulanmadan tarama baslatilamaz");
-
         var crawl = new Crawl
         {
             SiteId = site.Id,

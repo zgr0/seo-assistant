@@ -45,7 +45,7 @@ public sealed class SeoCopilotDbContext(DbContextOptions<SeoCopilotDbContext> op
 
     private static readonly Type[] EnumTypes =
     [
-        typeof(TenantPlan), typeof(UserRole), typeof(VerificationMethod), typeof(CrawlStatus),
+        typeof(TenantPlan), typeof(UserRole), typeof(CrawlStatus),
         typeof(CrawlTrigger), typeof(RuleCategory), typeof(Severity), typeof(IssueStatus),
         typeof(VitalsDevice), typeof(VitalsSource), typeof(BrandTone), typeof(AddressForm),
         typeof(EmojiUsage), typeof(ContentJobType), typeof(ContentJobStatus), typeof(ReportStatus)

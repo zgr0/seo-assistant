@@ -36,7 +36,11 @@ builder.Services.AddHangfire(cfg => cfg
     .UseSimpleAssemblyNameTypeSerializer()
     .UseRecommendedSerializerSettings()
     .UsePostgreSqlStorage(o => o.UseNpgsqlConnection(builder.Configuration.GetConnectionString("Postgres"))));
-builder.Services.AddHangfireServer();
+
+// Worker'i kapatmak icin Hangfire:EnableServer=false — is uretmeyen (yalniz API) dusumler
+// ve testler icin. Kuyruga atma ve /hangfire panosu her halukarda calisir.
+if (builder.Configuration.GetValue("Hangfire:EnableServer", true))
+    builder.Services.AddHangfireServer();
 
 // --- Auth ---
 var jwt = builder.Configuration.GetSection(JwtOptions.Section).Get<JwtOptions>() ?? new JwtOptions();

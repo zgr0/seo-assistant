@@ -43,7 +43,6 @@ public class CrawlDetailApiTests(PostgresFixture fixture) : IClassFixture<Postgr
         await using var factory = fixture.CreateFactory();
         var (client, _) = await TestAuth.RegisterAsync(factory, "cancel-worker@example.com");
         var site = await SiteManagementApiTests.CreateSiteAsync(client, "Iptal2", webSite.BaseUrl);
-        await SiteManagementApiTests.MarkVerifiedAsync(factory, site.Id);
         var crawlId = (await SiteManagementApiTests.SeedCrawlsAsync(factory, site.Id, 1))[0];
 
         await client.PostAsJsonAsync($"/api/crawls/{crawlId}/cancel", new { });
@@ -100,6 +99,39 @@ public class CrawlDetailApiTests(PostgresFixture fixture) : IClassFixture<Postgr
         var structured = await client.GetFromJsonAsync<JsonElement>(
             $"/api/crawls/{crawlId}/issues?category=structured_data&size=200");
         Assert.True(structured.GetProperty("total").GetInt32() > 0);
+    }
+
+    [Fact]
+    public async Task Issues_are_sorted_by_severity_rank_not_alphabetically()
+    {
+        await using var webSite = await TestWebSite.StartAsync();
+        await using var factory = fixture.CreateFactory();
+        var (client, crawlId) = await CrawlAsync(factory, webSite, "issues-order@example.com");
+
+        var body = await client.GetFromJsonAsync<JsonElement>($"/api/crawls/{crawlId}/issues?size=200");
+        var order = body.GetProperty("items").EnumerateArray()
+            .Select(i => Rank(i.GetProperty("severity").GetString()!))
+            .ToList();
+
+        // severity kolonu metin oldugu icin alfabetik siralama 'medium'u basa alirdi.
+        Assert.Equal(4, order[0]);
+        Assert.Equal(order, order.OrderByDescending(r => r));
+
+        var high = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/crawls/{crawlId}/issues?minSeverity=high&size=200");
+        Assert.True(high.GetProperty("total").GetInt32() > 0);
+        Assert.All(
+            high.GetProperty("items").EnumerateArray(),
+            i => Assert.True(Rank(i.GetProperty("severity").GetString()!) >= 3));
+
+        static int Rank(string severity) => severity switch
+        {
+            "Critical" => 4,
+            "High" => 3,
+            "Medium" => 2,
+            "Low" => 1,
+            _ => 0,
+        };
     }
 
     [Fact]
@@ -228,7 +260,6 @@ public class CrawlDetailApiTests(PostgresFixture fixture) : IClassFixture<Postgr
         {
             var db = scope.ServiceProvider.GetRequiredService<SeoCopilotDbContext>();
             var entity = await db.Sites.FirstAsync(s => s.Id == site.Id);
-            entity.VerifiedAt = DateTimeOffset.UtcNow;
             entity.CrawlSettings = new CrawlSettings { DelayMs = 0 };
             await db.SaveChangesAsync();
         }

@@ -5,10 +5,7 @@ namespace SeoCopilot.Application.Dtos;
 
 public record CreateSiteRequest(string Name, string BaseUrl, CrawlSettingsDto? CrawlSettings = null);
 
-/// <summary>
-/// PATCH /sites/{id} govdesi — kismi guncelleme. Verilmeyen alanlar korunur.
-/// <paramref name="BaseUrl"/> degisirse site yeniden dogrulanmalidir.
-/// </summary>
+/// <summary>PATCH /sites/{id} govdesi — kismi guncelleme. Verilmeyen alanlar korunur.</summary>
 public record UpdateSiteRequest(
     string? Name = null,
     string? BaseUrl = null,
@@ -48,9 +45,6 @@ public record SiteDto(
     Guid Id,
     string Name,
     string BaseUrl,
-    string VerificationMethod,
-    string? VerificationToken,
-    DateTimeOffset? VerifiedAt,
     bool IsActive,
     DateTimeOffset CreatedAt,
     CrawlSettingsDto CrawlSettings,
@@ -61,15 +55,9 @@ public record SiteDto(
         s.Id,
         s.Name,
         s.BaseUrl,
-        s.VerificationMethod.ToString(),
-        s.VerificationToken,
-        s.VerifiedAt,
         s.IsActive,
         s.CreatedAt,
         CrawlSettingsDto.From(s.CrawlSettings),
         s.ScheduleCron,
         s.DefaultBrandProfileId);
 }
-
-/// <summary><paramref name="MetaTag"/> siteye yapistirilacak hazir etiket.</summary>
-public record VerifySiteResponse(bool Verified, DateTimeOffset? VerifiedAt, string MetaTag);

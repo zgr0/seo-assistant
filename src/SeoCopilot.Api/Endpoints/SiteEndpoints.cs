@@ -36,10 +36,6 @@ public static class SiteEndpoints
             return Results.NoContent();
         });
 
-        group.MapPost("/{siteId:guid}/verify", async (
-            Guid siteId, ClaimsPrincipal user, SiteService sites, CancellationToken ct) =>
-            Results.Ok(await sites.VerifyAsync(siteId, user.TenantId(), ct)));
-
         group.MapPatch("/{siteId:guid}/crawl-settings", async (
             Guid siteId, CrawlSettingsDto req, ClaimsPrincipal user, SiteService sites, CancellationToken ct) =>
             Results.Ok(await sites.UpdateCrawlSettingsAsync(siteId, user.TenantId(), req, ct)));

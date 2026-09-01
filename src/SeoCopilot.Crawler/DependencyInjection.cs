@@ -23,7 +23,6 @@ public static class DependencyInjection
 
         services.AddHttpClient<IRobotsSource, RobotsProvider>(ConfigureClient);
         services.AddHttpClient<ISitemapSource, SitemapReader>(ConfigureClient);
-        services.AddHttpClient<ISiteVerifier, SiteVerifier>(ConfigureClient);
 
         return services;
     }

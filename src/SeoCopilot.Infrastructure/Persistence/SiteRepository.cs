@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using SeoCopilot.Application.Abstractions;
 using SeoCopilot.Domain.Entities.Crawling;
@@ -10,6 +11,22 @@ namespace SeoCopilot.Infrastructure.Persistence;
 
 public sealed class SiteRepository(SeoCopilotDbContext db) : ISiteRepository
 {
+    /// <summary>
+    /// severity kolonu snake_case <b>metin</b> olarak saklanir, bu yuzden SQL tarafinda
+    /// karsilastirma alfabetiktir ('medium' > 'low' > 'high' > 'critical'). Siralama ve esik
+    /// filtresi bu yuzden enum degerine karsilik gelen sayisal dereceye cevrilir.
+    /// </summary>
+    private static readonly Expression<Func<Issue, int>> SeverityRank =
+        i => i.Severity == Severity.Critical ? 4
+            : i.Severity == Severity.High ? 3
+            : i.Severity == Severity.Medium ? 2
+            : i.Severity == Severity.Low ? 1
+            : 0;
+
+    private static Severity[] AtLeast(Severity minimum) =>
+        [.. Enum.GetValues<Severity>().Where(s => s >= minimum)];
+
+
     public Task<Site?> GetSiteAsync(Guid siteId, CancellationToken ct = default) =>
         db.Sites.FirstOrDefaultAsync(s => s.Id == siteId, ct);
 
@@ -141,7 +158,7 @@ public sealed class SiteRepository(SeoCopilotDbContext db) : ISiteRepository
         await db.Issues
             .Include(i => i.Rule)
             .Where(i => i.PageId == pageId)
-            .OrderByDescending(i => i.Severity)
+            .OrderByDescending(SeverityRank)
             .ToListAsync(ct);
 
     public async Task<(IReadOnlyList<Issue> Items, int Total)> QueryIssuesAsync(
@@ -153,7 +170,11 @@ public sealed class SiteRepository(SeoCopilotDbContext db) : ISiteRepository
             .Where(i => i.CrawlId == crawlId);
 
         if (query.Severity is Severity severity) q = q.Where(i => i.Severity == severity);
-        if (query.MinSeverity is Severity minSeverity) q = q.Where(i => i.Severity >= minSeverity);
+        if (query.MinSeverity is Severity minSeverity)
+        {
+            var allowed = AtLeast(minSeverity);
+            q = q.Where(i => allowed.Contains(i.Severity));
+        }
         if (query.Category is RuleCategory category) q = q.Where(i => i.Rule!.Category == category);
         if (!string.IsNullOrWhiteSpace(query.RuleCode))
         {
@@ -165,7 +186,7 @@ public sealed class SiteRepository(SeoCopilotDbContext db) : ISiteRepository
 
         var total = await q.CountAsync(ct);
         var items = await q
-            .OrderByDescending(i => i.Severity)
+            .OrderByDescending(SeverityRank)
             .ThenBy(i => i.RuleCode)
             .ThenBy(i => i.Id)
             .Skip(skip)
@@ -180,7 +201,7 @@ public sealed class SiteRepository(SeoCopilotDbContext db) : ISiteRepository
             .Include(i => i.Rule)
             .Include(i => i.Page)
             .Where(i => i.CrawlId == crawlId)
-            .OrderByDescending(i => i.Severity)
+            .OrderByDescending(SeverityRank)
             .ToListAsync(ct);
 
     public Task<Issue?> GetIssueForTenantAsync(long issueId, Guid tenantId, CancellationToken ct = default) =>

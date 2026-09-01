@@ -17,9 +17,6 @@ public sealed class TestWebSite : IAsyncDisposable
 
     public string BaseUrl { get; private set; } = string.Empty;
 
-    /// <summary>Atanirsa ana sayfa dogrulama meta etiketini servis eder.</summary>
-    public string? VerificationToken { get; set; }
-
     public static async Task<TestWebSite> StartAsync()
     {
         var site = new TestWebSite();
@@ -68,12 +65,8 @@ public sealed class TestWebSite : IAsyncDisposable
         </urlset>
         """;
 
-    private string Home()
+    private static string Home()
     {
-        var verification = VerificationToken is null
-            ? string.Empty
-            : $"<meta name=\"seocopilot-verification\" content=\"{VerificationToken}\">";
-
         return $$"""
             <!doctype html>
             <html lang="tr">
@@ -81,7 +74,6 @@ public sealed class TestWebSite : IAsyncDisposable
                 <title>Ana sayfa — test sitesi icin yeterince uzun bir baslik</title>
                 <meta name="description" content="Bu ana sayfanin aciklamasi; uzunlugu SEO icin onerilen araliga denk gelsin diye yeterince uzun tutulmustur.">
                 <link rel="canonical" href="/">
-                {{verification}}
                 <script type="application/ld+json">{"@type":"WebSite"}</script>
               </head>
               <body>

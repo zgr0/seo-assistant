@@ -11,36 +11,31 @@ namespace SeoCopilot.Api.Tests;
 public class SiteManagementApiTests(PostgresFixture fixture) : IClassFixture<PostgresFixture>
 {
     [Fact]
-    public async Task Patch_updates_name_without_touching_verification()
+    public async Task Patch_updates_only_the_given_fields()
     {
         await using var factory = fixture.CreateFactory();
         var (client, _) = await TestAuth.RegisterAsync(factory, "patch-name@example.com");
         var site = await CreateSiteAsync(client, "Eski", "https://patch-name.example");
-        await MarkVerifiedAsync(factory, site.Id);
 
         var res = await client.PatchAsJsonAsync($"/api/sites/{site.Id}", new { name = "Yeni" });
 
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var updated = await res.Content.ReadFromJsonAsync<SiteResponse>();
         Assert.Equal("Yeni", updated!.Name);
-        Assert.NotNull(updated.VerifiedAt);
-        Assert.Equal(site.VerificationToken, updated.VerificationToken);
+        Assert.Equal(site.BaseUrl, updated.BaseUrl);
     }
 
     [Fact]
-    public async Task Patch_base_url_resets_verification_and_rotates_the_token()
+    public async Task Patch_normalises_the_new_base_url()
     {
         await using var factory = fixture.CreateFactory();
         var (client, _) = await TestAuth.RegisterAsync(factory, "patch-url@example.com");
         var site = await CreateSiteAsync(client, "Adres", "https://eski.example");
-        await MarkVerifiedAsync(factory, site.Id);
 
         var res = await client.PatchAsJsonAsync($"/api/sites/{site.Id}", new { baseUrl = "https://Yeni.example/" });
 
         var updated = await res.Content.ReadFromJsonAsync<SiteResponse>();
         Assert.Equal("https://yeni.example", updated!.BaseUrl);
-        Assert.Null(updated.VerifiedAt);
-        Assert.NotEqual(site.VerificationToken, updated.VerificationToken);
     }
 
     [Fact]
@@ -119,16 +114,6 @@ public class SiteManagementApiTests(PostgresFixture fixture) : IClassFixture<Pos
         var res = await client.PostAsJsonAsync("/api/sites", new { name, baseUrl });
         res.EnsureSuccessStatusCode();
         return (await res.Content.ReadFromJsonAsync<SiteResponse>())!;
-    }
-
-    internal static async Task MarkVerifiedAsync(
-        Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program> factory, Guid siteId)
-    {
-        using var scope = factory.Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<SeoCopilotDbContext>();
-        var site = await db.Sites.FirstAsync(s => s.Id == siteId);
-        site.VerifiedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync();
     }
 
     /// <summary>Hangfire'i tetiklemeden dogrudan crawl satiri yazar.</summary>

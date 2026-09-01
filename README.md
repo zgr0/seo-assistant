@@ -84,16 +84,16 @@ Tum `/api/sites` ve `/api/crawls` uclari token'daki `tenant_id` ile sinirlanir �
 
 | Endpoint | Aciklama |
 | --- | --- |
-| `POST /api/sites` | `{name,baseUrl,crawlSettings?}` → site + `verificationToken`. `baseUrl` normalize edilir (sema+host, sonda `/` yok) |
+| `POST /api/sites` | `{name,baseUrl,crawlSettings?}` → yeni site. `baseUrl` normalize edilir (sema+host, sonda `/` yok) |
 | `GET /api/sites` | Kiracinin siteleri |
 | `GET /api/sites/{id}` | Tek site |
-| `PATCH /api/sites/{id}` | Kismi guncelleme: `name`, `baseUrl`, `isActive`, `scheduleCron`, `defaultBrandProfileId`, `crawlSettings`. **`baseUrl` degisirse dogrulama sifirlanir ve token yenilenir** |
+| `PATCH /api/sites/{id}` | Kismi guncelleme: `name`, `baseUrl`, `isActive`, `scheduleCron`, `defaultBrandProfileId`, `crawlSettings` |
 | `DELETE /api/sites/{id}` | Siteyi ve tarama gecmisini siler (`204`) |
-| `POST /api/sites/{id}/verify` | Kok sayfada `<meta name="seocopilot-verification" content="...">` arar; bulursa `verified_at` yazar |
 | `PATCH /api/sites/{id}/crawl-settings` | Kismi guncelleme — verilmeyen alanlar korunur |
-| `POST /api/sites/{id}/crawls` | Tarama baslatir → `{crawlId}`. Site dogrulanmamissa `400` |
+| `POST /api/sites/{id}/crawls` | Tarama baslatir → `{crawlId}` |
 | `GET /api/sites/{id}/crawls?page=&size=` | Sitenin tarama gecmisi, sayfalanmis |
 | `POST /api/crawls` | `{siteId}` ile ayni islem (eski ucu, korunuyor) |
+
 | `GET /api/crawls/{id}` | Ozet: durum, skorlar, `issue_counts`, ilk 100 bulgu — FE bunu yoklar |
 | `POST /api/crawls/{id}/cancel` | Iptal isaretini yazar; calisan worker sonraki derinlik gecisinde durur. Bitmis tarama icin `400` |
 | `GET /api/crawls/{id}/pages` | Filtreli + sayfalanmis: `url`, `statusCode`, `minStatusCode`, `maxStatusCode`, `depth`, `hasIssues`, `page`, `size` |
@@ -190,6 +190,31 @@ disi yanit bosa gitmesin diye ham metin tek varyant olarak yazilir. `Anthropic:A
 Rapor HTML olarak uretilir (harici varlik icermez, tarayicidan PDF'e basilabilir) ve
 `Reports:Directory` altina `reports/{id}.html` olarak yazilir.
 
+## Web arayuzu
+
+React + Vite ([src/SeoCopilot.Web](src/SeoCopilot.Web)). Yalniz `react` + `react-dom` bagimliligi var;
+yonlendirme icin ~40 satirlik hash tabanli mini router kullanilir ([src/router.ts](src/SeoCopilot.Web/src/router.ts)) —
+statik servis eden Caddy'de sunucu tarafi rewrite gerekmez.
+
+| Rota | Sayfa | Icerik |
+| --- | --- | --- |
+| `#/login` | Giris / Kayit | Tek kartta sekmeli form; basarili istekte `#/sites`'a gecer |
+| `#/sites` | Site listesi | Kart basina skor gostergesi, trend oku (onceki taramaya gore), acik kritik/yuksek bulgu sayisi, son tarama zamani; site ekleme, tarama baslatma, silme |
+| `#/crawls/{id}` | Tarama detayi | Skor gauge'i, kategori barlari, siddet dagilimi, filtreli + sayfalanmis bulgu tablosu, calisan taramada iptal |
+| `#/crawls/{id}/rules/{ruleCode}` | Bulgu detayi | Kural aciklamasi, etkilenen sayfalar, kanit, "nasil duzeltilir" + LLM ile detaylandirma, yoksay/geri ac |
+| `#/pages/{id}` | Sayfa detayi | Cikarilan meta veriler, Core Web Vitals, sayfanin bulgulari, ana metin |
+
+Notlar:
+
+- Oturum `localStorage`'da tutulur. `401` alan istek bir kez `/api/auth/refresh` ile yenilenmeyi dener,
+  yenilenemezse oturum dusurulur ve giris ekranina donulur ([src/api/client.ts](src/SeoCopilot.Web/src/api/client.ts)).
+- Tarama detayi, durum `queued`/`running` iken 3 saniyede bir ozeti yeniden ceker.
+- Bulgu detayi kural bazindadir: ayni kural onlarca sayfada tetiklenebildigi icin hepsi tek ekranda toplanir.
+- "AI ile detaylandir" `POST /api/content/generate` ile `fix_advice` isi acar ve is bitene kadar yoklar;
+  `Anthropic:ApiKey` tanimsizsa is `failed` doner ve hata arayuzde gosterilir.
+
+Dev'de iki surec gerekir — Api (`:5094`) ve Vite (`:5173`, `/api` proxy'si vite.config.ts'te).
+
 ## Veritabani
 
 PostgreSQL, EF Core code-first. Snake_case kolon/tablo adlari (`EFCore.NamingConventions`).
@@ -256,4 +281,5 @@ ve gercek Postgres uzerinde ucdan uca calistirir.
 | `Anthropic:ApiKey` | Anthropic Messages API |
 | `PageSpeed:ApiKey` | Google PSI. Bos ise performans kurallari (`LCP_POOR`/`CLS_POOR`/`INP_POOR`) hic calismaz |
 | `Reports:Directory` | Uretilen rapor dosyalarinin kok dizini (varsayilan `App_Data/reports`) |
+| `Hangfire:EnableServer` | `false` ise dusum is islemez (yalniz API/kuyruga atma). Varsayilan `true` |
 | `Smtp:*` | Rapor maili |

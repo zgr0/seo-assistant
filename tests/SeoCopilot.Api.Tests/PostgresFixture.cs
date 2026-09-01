@@ -38,7 +38,12 @@ public sealed class PostgresFixture : IAsyncLifetime
         {
             builder.ConfigureHostConfiguration(cfg => cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ConnectionStrings:Postgres"] = connectionString
+                ["ConnectionStrings:Postgres"] = connectionString,
+
+                // Worker kapali: testler isleri ya dogrudan tetikler ya da yalniz kuyruga
+                // girdigini dogrular. Acik olsaydi arka plandaki tarama testlerle yarisir ve
+                // fabrika sokulurken Hangfire kapanis logu sokulmus logger'a yazmaya calisirdi.
+                ["Hangfire:EnableServer"] = "false"
             }));
             return base.CreateHost(builder);
         }

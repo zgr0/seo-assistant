@@ -2,7 +2,6 @@ namespace SeoCopilot.Application.Dtos;
 
 public record DashboardDto(
     int SiteCount,
-    int VerifiedSiteCount,
     decimal? AverageScore,
     IReadOnlyDictionary<string, int> OpenIssueCounts,
     IReadOnlyList<DashboardSiteDto> Sites,
@@ -14,7 +13,6 @@ public record DashboardSiteDto(
     Guid SiteId,
     string Name,
     string BaseUrl,
-    bool Verified,
     bool IsActive,
     Guid? LastCrawlId,
     string? LastCrawlStatus,

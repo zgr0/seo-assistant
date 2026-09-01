@@ -36,10 +36,6 @@ internal sealed record SiteResponse(
     Guid Id,
     string Name,
     string BaseUrl,
-    string? VerificationToken,
-    DateTimeOffset? VerifiedAt,
     SiteCrawlSettings CrawlSettings);
 
 internal sealed record SiteCrawlSettings(int MaxPages, int MaxDepth, int DelayMs, bool RenderJs, int Concurrency);
-
-internal sealed record VerifyResponse(bool Verified, DateTimeOffset? VerifiedAt, string MetaTag);

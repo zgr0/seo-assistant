@@ -43,10 +43,6 @@ Content-Type: application/json
 DELETE {{host}}/api/sites/{{siteId}}
 Authorization: Bearer {{token}}
 
-### Dogrula
-POST {{host}}/api/sites/{{siteId}}/verify
-Authorization: Bearer {{token}}
-
 ### Tarama baslat
 POST {{host}}/api/sites/{{siteId}}/crawls
 Authorization: Bearer {{token}}

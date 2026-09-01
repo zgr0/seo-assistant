@@ -1,122 +1,74 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import { useEffect, useSyncExternalStore } from 'react'
+import { logout } from './api/client.ts'
+import { getSession, subscribe } from './api/session.ts'
+import { CrawlPage } from './pages/CrawlPage.tsx'
+import { IssuePage } from './pages/IssuePage.tsx'
+import { LoginPage } from './pages/LoginPage.tsx'
+import { PageDetailPage } from './pages/PageDetailPage.tsx'
+import { SitesPage } from './pages/SitesPage.tsx'
+import { match, navigate, useRoute } from './router.ts'
 import './App.css'
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const route = useRoute()
+  const session = useSyncExternalStore(subscribe, getSession, getSession)
+
+  // Oturum yoksa (ya da token yenilenemeyip dustuyse) giris ekranina don.
+  useEffect(() => {
+    if (!session && route !== '/login') navigate('/login')
+    if (session && route === '/login') navigate('/sites')
+  }, [session, route])
+
+  if (!session) return <LoginPage />
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <div className="shell">
+      <header className="topbar">
+        <a className="brand" href="#/sites">
+          SeoCopilot
+        </a>
+        <nav>
+          <a href="#/sites" className={route.startsWith('/sites') ? 'active' : undefined}>
+            Siteler
+          </a>
+        </nav>
+        <div className="topbar-user">
+          <span>{session.user.fullName || session.user.email}</span>
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            onClick={() => void logout().then(() => navigate('/login'))}
+          >
+            Cikis
+          </button>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      <main className="content">
+        <Routes route={route} />
+      </main>
+    </div>
   )
 }
 
-export default App
+function Routes({ route }: { route: string }) {
+  const rule = match('/crawls/:crawlId/rules/:ruleCode', route)
+  if (rule) return <IssuePage crawlId={rule.crawlId} ruleCode={rule.ruleCode} />
+
+  const crawl = match('/crawls/:crawlId', route)
+  if (crawl) return <CrawlPage crawlId={crawl.crawlId} />
+
+  const page = match('/pages/:pageId', route)
+  if (page) return <PageDetailPage pageId={page.pageId} />
+
+  if (match('/sites', route) || match('/', route)) return <SitesPage />
+
+  return (
+    <div className="page">
+      <h1>Sayfa bulunamadi</h1>
+      <a className="btn btn-primary" href="#/sites">
+        Sitelere don
+      </a>
+    </div>
+  )
+}

@@ -7,8 +7,6 @@ public enum TenantPlan { Trial, Starter, Pro, Agency }
 
 public enum UserRole { Owner, Admin, Member, Viewer }
 
-public enum VerificationMethod { DnsTxt, MetaTag, File }
-
 public enum CrawlStatus { Queued, Running, Completed, Partial, Failed, Cancelled }
 
 public enum CrawlTrigger { Manual, Scheduled }

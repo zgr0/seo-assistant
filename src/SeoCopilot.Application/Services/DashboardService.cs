@@ -36,7 +36,6 @@ public sealed class DashboardService(ISiteRepository sites, IContentRepository c
                 site.Id,
                 site.Name,
                 site.BaseUrl,
-                site.VerifiedAt is not null,
                 site.IsActive,
                 last?.Id,
                 last?.Status.ToString(),
@@ -54,7 +53,6 @@ public sealed class DashboardService(ISiteRepository sites, IContentRepository c
 
         return new DashboardDto(
             siteList.Count,
-            siteList.Count(s => s.VerifiedAt is not null),
             scores.Count > 0 ? Math.Round(scores.Average(), 1) : null,
             issueTotals,
             cards,

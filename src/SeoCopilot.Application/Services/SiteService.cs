@@ -1,18 +1,13 @@
-using System.Security.Cryptography;
 using SeoCopilot.Application.Abstractions;
 using SeoCopilot.Application.Common;
 using SeoCopilot.Application.Dtos;
 using SeoCopilot.Domain.Entities.Sites;
-using SeoCopilot.Domain.Enums;
 
 namespace SeoCopilot.Application.Services;
 
-/// <summary>Site kaydi, dogrulama ve tarama ayarlari. Her islem kiraci sinirini uygular.</summary>
-public sealed class SiteService(ISiteRepository repository, ISiteVerifier verifier)
+/// <summary>Site kaydi ve tarama ayarlari. Her islem kiraci sinirini uygular.</summary>
+public sealed class SiteService(ISiteRepository repository)
 {
-    /// <summary>Dogrulama icin siteye eklenmesi gereken meta etiketin adi.</summary>
-    public const string VerificationMetaName = "seocopilot-verification";
-
     public async Task<SiteDto> CreateAsync(CreateSiteRequest request, Guid tenantId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -25,9 +20,7 @@ public sealed class SiteService(ISiteRepository repository, ISiteVerifier verifi
         {
             TenantId = tenantId,
             Name = request.Name.Trim(),
-            BaseUrl = baseUrl,
-            VerificationMethod = VerificationMethod.MetaTag,
-            VerificationToken = RandomNumberGenerator.GetHexString(32, lowercase: true)
+            BaseUrl = baseUrl
         };
         request.CrawlSettings?.ApplyTo(site.CrawlSettings);
 
@@ -43,29 +36,7 @@ public sealed class SiteService(ISiteRepository repository, ISiteVerifier verifi
     public async Task<SiteDto> GetAsync(Guid siteId, Guid tenantId, CancellationToken ct = default) =>
         SiteDto.From(await RequireSiteAsync(siteId, tenantId, ct));
 
-    public async Task<VerifySiteResponse> VerifyAsync(Guid siteId, Guid tenantId, CancellationToken ct = default)
-    {
-        var site = await RequireSiteAsync(siteId, tenantId, ct);
-        var token = site.VerificationToken
-            ?? throw new InvalidOperationException("Site icin dogrulama anahtari uretilmemis");
-        var metaTag = MetaTagFor(token);
-
-        if (site.VerifiedAt is not null)
-            return new VerifySiteResponse(true, site.VerifiedAt, metaTag);
-
-        if (await verifier.VerifyMetaTagAsync(site.BaseUrl, token, ct))
-        {
-            site.VerifiedAt = DateTimeOffset.UtcNow;
-            await repository.SaveChangesAsync(ct);
-        }
-
-        return new VerifySiteResponse(site.VerifiedAt is not null, site.VerifiedAt, metaTag);
-    }
-
-    /// <summary>
-    /// Kismi guncelleme. <c>baseUrl</c> degisirse dogrulama sifirlanir ve yeni bir
-    /// dogrulama anahtari uretilir — eski token yeni alan adinda gecerli sayilamaz.
-    /// </summary>
+    /// <summary>Kismi guncelleme — verilmeyen alanlar korunur.</summary>
     public async Task<SiteDto> UpdateAsync(
         Guid siteId, Guid tenantId, UpdateSiteRequest request, CancellationToken ct = default)
     {
@@ -80,15 +51,8 @@ public sealed class SiteService(ISiteRepository repository, ISiteVerifier verifi
 
         if (request.BaseUrl is not null)
         {
-            var baseUrl = UrlNormalizer.NormalizeSiteBaseUrl(request.BaseUrl)
+            site.BaseUrl = UrlNormalizer.NormalizeSiteBaseUrl(request.BaseUrl)
                 ?? throw new InvalidOperationException("Gecersiz site adresi — http/https bekleniyor");
-
-            if (!string.Equals(baseUrl, site.BaseUrl, StringComparison.Ordinal))
-            {
-                site.BaseUrl = baseUrl;
-                site.VerifiedAt = null;
-                site.VerificationToken = RandomNumberGenerator.GetHexString(32, lowercase: true);
-            }
         }
 
         if (request.IsActive is bool isActive) site.IsActive = isActive;
@@ -119,9 +83,6 @@ public sealed class SiteService(ISiteRepository repository, ISiteVerifier verifi
         await repository.SaveChangesAsync(ct);
         return SiteDto.From(site);
     }
-
-    public static string MetaTagFor(string token) =>
-        $"<meta name=\"{VerificationMetaName}\" content=\"{token}\" />";
 
     private async Task<Site> RequireSiteAsync(Guid siteId, Guid tenantId, CancellationToken ct) =>
         await repository.GetSiteForTenantAsync(siteId, tenantId, ct)
