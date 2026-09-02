@@ -1,5 +1,7 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text.RegularExpressions;
+using System.Threading.Channels;
 using Microsoft.Extensions.Logging;
 using SeoCopilot.Application.Abstractions;
 using SeoCopilot.Application.Common;
@@ -13,9 +15,15 @@ using SeoCopilot.Domain.Enums;
 namespace SeoCopilot.Application.Services;
 
 /// <summary>
-/// Cok sayfali tarama motoru. Seviye seviye BFS: her seviye <see cref="CrawlSettings.Concurrency"/>
-/// paralellikte getirilir, her getirmeden sonra <see cref="CrawlSettings.DelayMs"/> beklenir.
-/// Getirmeler paralel, veritabanina yazma hep tek is parcaciginda (DbContext thread-safe degil).
+/// Cok sayfali tarama motoru. Kesintisiz BFS: FIFO bir kuyruk (<see cref="Channel"/>) ile
+/// <see cref="CrawlSettings.Concurrency"/> adet getirici surekli calisir — seviye sinirinda
+/// beklenmez, yani yavas bir sayfa digerlerini bosta bekletmez.
+///
+/// Nezaket <see cref="RequestPacer"/> ile saglanir; crawl'in tum giden istekleri (sayfa,
+/// varlik yoklamasi, gorsel olcumu) tek butceyi paylasir.
+///
+/// Getirmeler paralel; entity uretimi, kural calistirma, kuyruga ekleme ve veritabanina
+/// yazma hep tek is parcaciginda (DbContext thread-safe degil, paylasilan kumeler kilitsiz).
 /// </summary>
 public sealed class CrawlEngine(
     ISiteRepository repository,
@@ -35,6 +43,9 @@ public sealed class CrawlEngine(
 
     private static readonly TimeSpan PatternTimeout = TimeSpan.FromSeconds(1);
 
+    /// <summary>Iptal istegi bu siklikta sorulur — her sayfada sormak gereksiz veritabani trafigi.</summary>
+    private static readonly TimeSpan CancelCheckInterval = TimeSpan.FromSeconds(2);
+
     private sealed record FrontierItem(Uri Url, int Depth);
 
     /// <summary>Tohumlama ciktisi: baslangic kuyrugu ve sitemap gercekleri.</summary>
@@ -45,8 +56,9 @@ public sealed class CrawlEngine(
     /// alanlarini yazar. Durumu doner — StartedAt/FinishedAt cagirana ait.
     /// </summary>
     /// <param name="cancelRequested">
-    /// Her derinlik gecisinde sorulur; true donerse tarama o ana kadarki verilerle kapatilir
-    /// ve <see cref="CrawlStatus.Cancelled"/> donulur. Kullanicinin iptal istegi buradan gelir.
+    /// En sik <see cref="CancelCheckInterval"/> araligiyla sorulur; true donerse tarama o ana
+    /// kadarki verilerle kapatilir ve <see cref="CrawlStatus.Cancelled"/> donulur.
+    /// Kullanicinin iptal istegi buradan gelir.
     /// </param>
     public async Task<CrawlStatus> RunAsync(
         Crawl crawl, Site site, Func<CancellationToken, Task<bool>>? cancelRequested, CancellationToken ct = default)
@@ -57,13 +69,20 @@ public sealed class CrawlEngine(
         var maxDepth = Math.Max(0, settings.MaxDepth);
         var concurrency = Math.Clamp(settings.Concurrency, 1, 16);
         var delayMs = Math.Max(0, settings.DelayMs);
-        var fetchOptions = new PageFetchOptions(baseUri, settings.RenderJs);
 
         var include = Compile(settings.IncludePatterns);
         var exclude = Compile(settings.ExcludePatterns);
         var robots = await robotsSource.GetAsync(baseUri, ct);
 
+        // Nezaket butcesi: her delayMs penceresinde concurrency istek. Tum giden istekler paylasir.
+        using var pacer = new RequestPacer(concurrency, delayMs);
+
+        // Gorsel olcumu gibi sayfa disi istekler de robots'a ve ayni nezaket butcesine uyar.
+        var fetchOptions = new PageFetchOptions(baseUri, settings.RenderJs, robots, pacer);
+
         var seen = new HashSet<string>(StringComparer.Ordinal);
+        var assetSeen = new HashSet<string>(StringComparer.Ordinal);
+        var assets = new List<FrontierItem>();
         var blocked = new HashSet<string>(StringComparer.Ordinal);
         var pages = new List<Page>();
         var links = new List<PageLink>();
@@ -73,58 +92,68 @@ public sealed class CrawlEngine(
         var cancelled = false;
         var saved = 0;
 
-        var seed = await SeedFrontierAsync(baseUri, robots, include, exclude, seen, blocked, maxPages, ct);
-        var frontier = seed.Frontier;
+        var seed = await SeedFrontierAsync(
+            baseUri, robots, include, exclude, seen, assetSeen, assets, blocked, maxPages, ct);
         logger.LogInformation(
             "Crawl {CrawlId} basliyor: {Seed} tohum URL, maxPages={MaxPages} maxDepth={MaxDepth} concurrency={Concurrency}",
-            crawl.Id, frontier.Count, maxPages, maxDepth, concurrency);
+            crawl.Id, seed.Frontier.Count, maxPages, maxDepth, concurrency);
 
-        for (var depth = 0; depth <= maxDepth && frontier.Count > 0; depth++)
+        // Kuyruk FIFO oldugu ve cocuklar ebeveynin arkasina eklendigi icin sira yine BFS.
+        var frontier = Channel.CreateUnbounded<FrontierItem>(
+            new UnboundedChannelOptions { SingleWriter = true });
+        var fetched = Channel.CreateUnbounded<(FrontierItem Item, ExtractedPage Page)>(
+            new UnboundedChannelOptions { SingleReader = true });
+
+        // Iptalde ucus halindeki getirmeleri de birakmak icin — dis token'a bagli.
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+        var workers = new Task[concurrency];
+        for (var i = 0; i < concurrency; i++)
+            workers[i] = FetchLoopAsync(frontier.Reader, fetched.Writer, fetchOptions, pacer, stop.Token);
+
+        // Kuyruga yazan tek yer burasi (tuketici is parcacigi) — kilit gerekmez.
+        var dispatched = 0;
+        var pending = 0;
+        var seedIds = new HashSet<Guid>();
+
+        void Enqueue(Uri url, int depth)
         {
-            ct.ThrowIfCancellationRequested();
-
-            if (cancelRequested is not null && await cancelRequested(ct))
-            {
-                logger.LogInformation("Crawl {CrawlId} kullanici tarafindan iptal edildi", crawl.Id);
-                cancelled = true;
-                break;
-            }
-
-            var remaining = maxPages - pages.Count;
-            if (remaining <= 0)
+            // Tavana takilan URL kesfedilmis sayilir (pages_discovered) ama getirilmez.
+            if (depth > maxDepth || dispatched >= maxPages)
             {
                 truncated = true;
-                break;
+                return;
             }
 
-            var batch = frontier;
-            if (batch.Count > remaining)
-            {
-                batch = [.. frontier.Take(remaining)];
-                truncated = true;
-            }
+            frontier.Writer.TryWrite(new FrontierItem(url, depth));
+            dispatched++;
+            pending++;
+        }
 
-            var fetched = new ConcurrentBag<(FrontierItem Item, ExtractedPage Page)>();
-            await Parallel.ForEachAsync(
-                batch,
-                new ParallelOptions { MaxDegreeOfParallelism = concurrency, CancellationToken = ct },
-                async (item, token) =>
-                {
-                    fetched.Add((item, await SafeExtractAsync(item.Url, fetchOptions, token)));
-                    if (delayMs > 0) await Task.Delay(delayMs, token);
-                });
+        foreach (var item in seed.Frontier) Enqueue(item.Url, item.Depth);
 
-            // Buradan sonrasi tek is parcacigi: entity uretimi, kural calistirma, kayit.
-            var next = new List<FrontierItem>();
-            foreach (var (item, extracted) in fetched)
+        var lastCancelCheck = Stopwatch.GetTimestamp();
+
+        try
+        {
+            // Tek is parcacigi: entity uretimi, kural calistirma, kuyruga ekleme, kayit.
+            while (pending > 0)
             {
+                var (item, extracted) = await fetched.Reader.ReadAsync(ct);
+                pending--;
+
                 var page = BuildPage(crawl.Id, item, extracted);
                 pages.Add(page);
+                if (item.Depth == 0) seedIds.Add(page.Id);
 
-                var outcome = ruleRunner.Run(extracted);
-                pageScores.Add(outcome.Score);
-                foreach (var finding in outcome.Findings)
-                    pageFindings.Add((page, finding));
+                // 2xx donen ama HTML olmayan icerik sayfa degil — sayfa kurallari uygulanmaz.
+                if (extracted.StatusCode is < 200 or >= 300 || extracted.IsHtml)
+                {
+                    var outcome = ruleRunner.Run(extracted);
+                    pageScores.Add(outcome.Score);
+                    foreach (var finding in outcome.Findings)
+                        pageFindings.Add((page, finding));
+                }
 
                 var (internalCount, externalCount) = CollectLinks(crawl.Id, page, extracted, links);
                 page.OutlinkInternal = internalCount;
@@ -133,23 +162,49 @@ public sealed class CrawlEngine(
                 foreach (var link in extracted.Links)
                 {
                     if (!link.IsInternal || link.IsNofollow) continue;
+
+                    // Ikili varliklar kuyruga girmez; ayri listede yalniz durumu yoklanir.
+                    if (UrlNormalizer.IsLikelyAsset(link.Url))
+                    {
+                        if (TryAccept(link.Url, baseUri, robots, include, exclude, assetSeen, blocked))
+                            assets.Add(new FrontierItem(link.Url, item.Depth + 1));
+                        continue;
+                    }
+
                     if (!TryAccept(link.Url, baseUri, robots, include, exclude, seen, blocked)) continue;
-                    next.Add(new FrontierItem(link.Url, depth + 1));
+                    Enqueue(link.Url, item.Depth + 1);
+                }
+
+                if (pages.Count - saved >= SaveBatchSize)
+                {
+                    saved = await PersistPagesAsync(pages, saved, crawl, pages.Count, ct);
+                    logger.LogInformation(
+                        "Crawl {CrawlId}: {Crawled} sayfa islendi, kuyrukta {Pending}",
+                        crawl.Id, pages.Count, pending);
+                }
+
+                // Iptal sorgusu veritabanina gider — sayfa basina degil, zamana bagli sorulur.
+                if (cancelRequested is not null
+                    && Stopwatch.GetElapsedTime(lastCancelCheck) >= CancelCheckInterval)
+                {
+                    lastCancelCheck = Stopwatch.GetTimestamp();
+                    if (await cancelRequested(ct))
+                    {
+                        logger.LogInformation("Crawl {CrawlId} kullanici tarafindan iptal edildi", crawl.Id);
+                        cancelled = true;
+                        break;
+                    }
                 }
             }
-
-            if (pages.Count - saved >= SaveBatchSize)
-                saved = await PersistPagesAsync(pages, saved, crawl, ct);
-
-            logger.LogInformation(
-                "Crawl {CrawlId} derinlik {Depth}: {Fetched} sayfa cekildi, {Next} yeni URL kuyruga girdi",
-                crawl.Id, depth, fetched.Count, next.Count);
-
-            frontier = next;
         }
+        finally
+        {
+            frontier.Writer.TryComplete();
 
-        // Derinlik/sayfa tavani yuzunden kuyrukta URL kaldiysa tarama tam degil.
-        if (frontier.Count > 0) truncated = true;
+            // Iptalde ya da hatada ucustaki getirmeler beklenmez, dusurulur.
+            if (pending > 0) await stop.CancelAsync();
+            await DrainAsync(workers);
+        }
 
         if (pages.Count == 0)
         {
@@ -158,9 +213,17 @@ public sealed class CrawlEngine(
             throw new InvalidOperationException("Hicbir sayfa taranamadi — base_url gecersiz olabilir");
         }
 
-        await PersistPagesAsync(pages, saved, crawl, ct);
+        var htmlPages = pages.Count;
+        await PersistPagesAsync(pages, saved, crawl, htmlPages, ct);
+
+        // Ikili varliklar: yalniz durum yoklamasi. Sayfa butcesinden dusmez, kural
+        // calistirilmaz — ama page_links hedefi olarak cozulur ki kirik link yakalansin.
+        pages.AddRange(await ProbeAssetsAsync(
+            crawl.Id, assets, settings.MaxAssetChecks, concurrency, pacer, ct));
+        await PersistPagesAsync(pages, htmlPages, crawl, htmlPages, ct);
 
         ResolveLinkGraph(pages, links);
+        AssignDepths(pages, links, seedIds);
         await repository.AddPageLinksAsync(links, ct);
 
         var home = pages.FirstOrDefault(p => p.Url == baseUri.AbsoluteUri) ?? pages[0];
@@ -175,17 +238,18 @@ public sealed class CrawlEngine(
             HomePageId = home.Id
         };
 
-        var crawlFindings = RunCrawlRules(pages, links, home, siteFacts);
+        var crawlFindings = RunCrawlRules(pages, htmlPages, links, home, siteFacts);
         WriteIssues(crawl, site, pageFindings, crawlFindings);
 
         var allFindings = pageFindings.Select(f => f.Finding)
             .Concat(crawlFindings.Select(f => f.Finding))
             .ToList();
 
+        // Varlik satirlari sayfa sayilmaz — ne butceden duser ne skoru sulandirir.
         crawl.PagesDiscovered = seen.Count;
-        crawl.PagesCrawled = pages.Count;
+        crawl.PagesCrawled = htmlPages;
         crawl.OverallScore = ruleRunner.OverallScore(pageScores, crawlFindings.Select(f => f.Finding));
-        crawl.CategoryScores = ruleRunner.CategoryScores(allFindings, pages.Count);
+        crawl.CategoryScores = ruleRunner.CategoryScores(allFindings, htmlPages);
         crawl.ScoringSnapshot = ruleRunner.ScoringSnapshot();
         crawl.IssueCounts = crawl.Issues
             .GroupBy(i => i.Severity.ToString().ToLowerInvariant())
@@ -206,7 +270,8 @@ public sealed class CrawlEngine(
     private async Task<Seed> SeedFrontierAsync(
         Uri baseUri, IRobotsPolicy robots,
         IReadOnlyList<Regex> include, IReadOnlyList<Regex> exclude,
-        HashSet<string> seen, HashSet<string> blocked, int maxPages, CancellationToken ct)
+        HashSet<string> seen, HashSet<string> assetSeen, List<FrontierItem> assets,
+        HashSet<string> blocked, int maxPages, CancellationToken ct)
     {
         var frontier = new List<FrontierItem>();
 
@@ -223,6 +288,13 @@ public sealed class CrawlEngine(
 
             // Desen filtreleri disinda kalsa bile sitemap'te gecmis sayilir.
             sitemapUrls.Add(url.AbsoluteUri);
+
+            if (UrlNormalizer.IsLikelyAsset(url))
+            {
+                if (TryAccept(url, baseUri, robots, include, exclude, assetSeen, blocked))
+                    assets.Add(new FrontierItem(url, 0));
+                continue;
+            }
 
             if (frontier.Count >= maxPages) continue;
             if (TryAccept(url, baseUri, robots, include, exclude, seen, blocked))
@@ -308,6 +380,36 @@ public sealed class CrawlEngine(
     private static int? Round(double? value) => value is double v ? (int)Math.Round(v) : null;
 
     // --- getirme ---
+
+    /// <summary>
+    /// Bir getirici: kuyruk kapanana kadar URL alir, getirir, sonucu tuketiciye yollar.
+    /// Sayfa hatalari <see cref="SafeExtractAsync"/> icinde yutulur — buradan yalniz iptal cikar.
+    /// </summary>
+    private async Task FetchLoopAsync(
+        ChannelReader<FrontierItem> frontier,
+        ChannelWriter<(FrontierItem Item, ExtractedPage Page)> fetched,
+        PageFetchOptions options, IRequestPacer pacer, CancellationToken ct)
+    {
+        await foreach (var item in frontier.ReadAllAsync(ct))
+        {
+            await pacer.AcquireAsync(ct);
+            var page = await SafeExtractAsync(item.Url, options, ct);
+            await fetched.WriteAsync((item, page), ct);
+        }
+    }
+
+    /// <summary>Gettiricilerin bitmesini bekler; iptal disinda bir sey firlatmalari beklenmez.</summary>
+    private static async Task DrainAsync(Task[] workers)
+    {
+        try
+        {
+            await Task.WhenAll(workers);
+        }
+        catch (OperationCanceledException)
+        {
+            // Iptal edilen crawl'da beklenen son.
+        }
+    }
 
     private async Task<ExtractedPage> SafeExtractAsync(Uri url, PageFetchOptions options, CancellationToken ct)
     {
@@ -472,13 +574,66 @@ public sealed class CrawlEngine(
             page.InlinkCount = inlinks.GetValueOrDefault(page.Id);
     }
 
+    /// <summary>
+    /// pages.depth = tohumlardan link grafigi uzerindeki en kisa mesafe.
+    ///
+    /// Getirme sirasindan hesaplanamaz: getiriciler paralel calistigi icin bir URL'i once
+    /// hangi ebeveynin sonucunun kesfettigi yanit surelerine baglidir, o yuzden derinlik
+    /// oldugundan buyuk cikabilirdi. Grafik uzerinden BFS hem es zamanliliktan bagimsiz
+    /// hem de tanimi geregi dogru sonucu verir.
+    ///
+    /// Grafikte hedefi cozulmemis satirlar (dis linkler, taranmamis URL'ler) atlanir;
+    /// ulasilamayan sayfa getirme sirasindaki derinligini korur.
+    /// </summary>
+    private static void AssignDepths(List<Page> pages, List<PageLink> links, HashSet<Guid> seedIds)
+    {
+        var outgoing = new Dictionary<Guid, List<Guid>>();
+        foreach (var link in links)
+        {
+            if (link.ToPageId is not Guid target) continue;
+            if (!outgoing.TryGetValue(link.FromPageId, out var targets))
+                outgoing[link.FromPageId] = targets = [];
+            targets.Add(target);
+        }
+
+        var depths = new Dictionary<Guid, int>();
+        var queue = new Queue<Guid>();
+        foreach (var id in seedIds)
+        {
+            depths[id] = 0;
+            queue.Enqueue(id);
+        }
+
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            if (!outgoing.TryGetValue(current, out var targets)) continue;
+
+            var next = depths[current] + 1;
+            foreach (var target in targets)
+            {
+                // Ilk ulasan en kisa olandir — BFS.
+                if (!depths.TryAdd(target, next)) continue;
+                queue.Enqueue(target);
+            }
+        }
+
+        foreach (var page in pages)
+            if (depths.TryGetValue(page.Id, out var depth)) page.Depth = depth;
+    }
+
+    /// <summary>
+    /// <paramref name="pages"/> varlik satirlarini da icerir; kural girdisi yalniz ilk
+    /// <paramref name="htmlCount"/> HTML sayfasidir. Varlik durumlari link cozumu icin gerekli.
+    /// </summary>
     private IReadOnlyList<CrawlRuleFinding> RunCrawlRules(
-        List<Page> pages, List<PageLink> links, Page home, CrawlSiteFacts site)
+        List<Page> pages, int htmlCount, List<PageLink> links, Page home, CrawlSiteFacts site)
     {
         var statusById = pages.ToDictionary(p => p.Id, p => p.StatusCode);
         var urlById = pages.ToDictionary(p => p.Id, p => p.Url);
 
         var pageFacts = pages
+            .Take(htmlCount)
             .Select(p => new CrawlPageFacts(p.Id, p.Url, p.StatusCode, p.ContentHash)
             {
                 Depth = p.Depth,
@@ -536,15 +691,63 @@ public sealed class CrawlEngine(
 
     // --- kalicilik ---
 
-    /// <summary>Henuz yazilmamis sayfalari kaydeder, ilerlemeyi crawl'a isler; yeni imleci doner.</summary>
-    private async Task<int> PersistPagesAsync(List<Page> pages, int from, Crawl crawl, CancellationToken ct)
+    /// <summary>
+    /// Henuz yazilmamis satirlari kaydeder; yeni imleci doner. <paramref name="progress"/>
+    /// crawl.pages_crawled'a yazilir — varlik satirlari buna dahil degildir.
+    /// </summary>
+    private async Task<int> PersistPagesAsync(
+        List<Page> pages, int from, Crawl crawl, int progress, CancellationToken ct)
     {
         if (from >= pages.Count) return from;
 
         await repository.AddPagesAsync(pages.Skip(from).ToList(), ct);
-        crawl.PagesCrawled = pages.Count;
+        crawl.PagesCrawled = progress;
         await repository.SaveChangesAsync(ct);
         return pages.Count;
+    }
+
+    /// <summary>
+    /// Ikili varliklarin yalniz durumunu yoklar (HEAD). Sayfa alanlari bos kalir;
+    /// amac page_links hedeflerinin cozulmesi ve kirik varlik linklerinin yakalanmasi.
+    /// </summary>
+    private async Task<List<Page>> ProbeAssetsAsync(
+        Guid crawlId, List<FrontierItem> assets, int maxChecks, int concurrency,
+        IRequestPacer pacer, CancellationToken ct)
+    {
+        if (maxChecks <= 0 || assets.Count == 0) return [];
+
+        var batch = assets.Count > maxChecks ? assets.Take(maxChecks).ToList() : assets;
+        var probed = new ConcurrentBag<Page>();
+
+        await Parallel.ForEachAsync(
+            batch,
+            new ParallelOptions { MaxDegreeOfParallelism = concurrency, CancellationToken = ct },
+            async (item, token) =>
+            {
+                await pacer.AcquireAsync(token);
+
+                ExtractedPage result;
+                try
+                {
+                    result = await extractor.ProbeAsync(item.Url, token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "{Url} varligi yoklanamadi", item.Url);
+                    result = ExtractedPage.Failed(item.Url, 0);
+                }
+
+                probed.Add(BuildPage(crawlId, item, result));
+            });
+
+        logger.LogInformation(
+            "Crawl {CrawlId}: {Probed}/{Total} ikili varlik yoklandi", crawlId, batch.Count, assets.Count);
+
+        return [.. probed];
     }
 
     private static string Clip(string value, int max) =>

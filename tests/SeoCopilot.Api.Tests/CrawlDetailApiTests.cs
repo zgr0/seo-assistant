@@ -62,9 +62,15 @@ public class CrawlDetailApiTests(PostgresFixture fixture) : IClassFixture<Postgr
         await using var factory = fixture.CreateFactory();
         var (client, crawlId) = await CrawlAsync(factory, webSite, "pages-filter@example.com");
 
+        // Kirik sayfa ve kirik PDF varligi — ikisi de 404
         var broken = await client.GetFromJsonAsync<JsonElement>($"/api/crawls/{crawlId}/pages?statusCode=404");
-        Assert.Equal(1, broken.GetProperty("total").GetInt32());
-        Assert.EndsWith("/kirik", broken.GetProperty("items")[0].GetProperty("url").GetString());
+        Assert.Equal(2, broken.GetProperty("total").GetInt32());
+        var brokenUrls = broken.GetProperty("items")
+            .EnumerateArray()
+            .Select(i => i.GetProperty("url").GetString()!)
+            .ToList();
+        Assert.Contains(brokenUrls, u => u.EndsWith("/kirik"));
+        Assert.Contains(brokenUrls, u => u.EndsWith("/dosyalar/eksik.pdf"));
 
         var byUrl = await client.GetFromJsonAsync<JsonElement>($"/api/crawls/{crawlId}/pages?url=sitemap-only");
         Assert.Equal(1, byUrl.GetProperty("total").GetInt32());

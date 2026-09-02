@@ -239,6 +239,67 @@ public class PageExtractorTests
     }
 
     [Fact]
+    public async Task Relative_links_resolve_against_the_redirected_url()
+    {
+        // Gercek vaka: /en → /en/ atlamasi, sayfadaki linkler slash'siz goreli.
+        // Taban olarak /en alinirsa "a5-series" koke cozulur ve olmayan URL uretilir.
+        const string html = """
+            <html lang="tr"><body>
+              <a href="a5-series">urun</a>
+              <a href="automotive">sektor</a>
+            </body></html>
+            """;
+        var handler = new StubHttpMessageHandler()
+            .MapRedirect("https://example.com/en", "https://example.com/en/")
+            .Map("https://example.com/en/", html);
+
+        var page = await ExtractAsync(handler, new Uri("https://example.com/en"));
+
+        Assert.Equal(
+            ["https://example.com/en/a5-series", "https://example.com/en/automotive"],
+            page.Links.Select(l => l.Url.AbsoluteUri));
+
+        // Kimlik degismez: pages.url istenen adres, varilan adres redirect_to'da.
+        Assert.Equal("https://example.com/en", page.Url);
+        Assert.Equal("https://example.com/en/", page.RedirectTo);
+    }
+
+    [Fact]
+    public async Task Canonical_and_image_urls_follow_the_redirected_url()
+    {
+        const string html = """
+            <html lang="tr">
+              <head><link rel="canonical" href="."></head>
+              <body><img src="logo.png" alt="logo"></body>
+            </html>
+            """;
+        var handler = new StubHttpMessageHandler()
+            .MapRedirect("https://example.com/en", "https://example.com/en/")
+            .Map("https://example.com/en/", html);
+
+        var page = await ExtractAsync(handler, new Uri("https://example.com/en"));
+
+        Assert.Equal("https://example.com/en/", page.CanonicalUrl);
+        Assert.Equal(["https://example.com/en/logo.png"], page.ImageUrls);
+    }
+
+    [Fact]
+    public async Task Relative_base_href_is_resolved_against_the_redirected_url()
+    {
+        const string html = """
+            <html><head><base href="kok/"></head>
+            <body><a href="sayfa">x</a></body></html>
+            """;
+        var handler = new StubHttpMessageHandler()
+            .MapRedirect("https://example.com/en", "https://example.com/en/")
+            .Map("https://example.com/en/", html);
+
+        var page = await ExtractAsync(handler, new Uri("https://example.com/en"));
+
+        Assert.Equal("https://example.com/en/kok/sayfa", page.Links[0].Url.AbsoluteUri);
+    }
+
+    [Fact]
     public async Task Redirect_count_grows_with_every_hop()
     {
         var handler = new StubHttpMessageHandler()

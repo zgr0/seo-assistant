@@ -108,19 +108,27 @@ Enum filtreleri hem `structured_data` hem `StructuredData` bicimini kabul eder; 
 
 ### Tarama motoru
 
-[`CrawlEngine`](src/SeoCopilot.Application/Services/CrawlEngine.cs) seviye seviye BFS yapar:
+[`CrawlEngine`](src/SeoCopilot.Application/Services/CrawlEngine.cs) kesintisiz BFS yapar:
 
 - **Tohum**: `base_url` + `robots.txt`'deki (yoksa `/sitemap.xml`) sitemap URL'leri. Kok URL robots/desen filtrelerinden muaftir.
 - **robots.txt**: RFC 9309 — ardisik `User-agent` satirlari tek grup, en uzun desen kazanir, esitlikte `Allow` oncelikli, `*`/`$` desteklenir. Kendi token'imiz (`seocopilotbot`) `*`'a gore onceliklidir. Dosya yoksa kisit yok.
-- **Es zamanlilik ve nezaket**: her seviye `Concurrency` paralellikte, her getirmeden sonra `DelayMs` beklenir (~`Concurrency/DelayMs` istek/sn). Getirme paralel, veritabanina yazma tek is parcaciginda.
+- **Es zamanlilik ve nezaket**: FIFO bir kuyruk (`Channel`) ve `Concurrency` adet surekli calisan getirici — seviye sinirinda beklenmez, yavas bir sayfa digerlerini bosta bekletmez. Kuyruk FIFO oldugu icin sira yine BFS. Nezaket ayri bir hiz butcesidir ([`RequestPacer`](src/SeoCopilot.Application/Common/RequestPacer.cs)): ardisik iki istegin **acilisi** arasinda en az `DelayMs / Concurrency` beklenir — yani her `DelayMs` icinde `Concurrency` istek. Butceyi sayfa getirmeleri, ikili varlik yoklamalari ve gorsel olcumleri paylasir; bekleme yanit suresine eklenmedigi icin yavas bir sayfa digerlerini durdurmaz. `DelayMs = 0` → sinir yok. Getirme paralel, veritabanina yazma tek is parcaciginda.
 - **Yonlendirme**: elle izlenir (`AllowAutoRedirect=false`), en fazla `Crawler:MaxRedirects` atlama. `status_code` zincirin sonundan, `redirect_to` varilan adresten gelir.
-- **Ayristirma**: yalniz 2xx + `text/html`. Govde `Crawler:MaxHtmlBytes` ile sinirli. `nofollow` linkler `page_links`'e yazilir ama kuyruga alinmaz.
+- **Ayristirma**: yalniz 2xx + `text/html`. Govde `Crawler:MaxHtmlBytes` ile sinirli. `nofollow` linkler `page_links`'e yazilir ama kuyruga alinmaz. 2xx donen HTML disi icerige sayfa kurallari uygulanmaz.
+- **Ikili varliklar**: uzantisi indirilebilir varliga isaret eden ic linkler (`.pdf`, `.zip`, `.jpg`, `.css` ...) sayfa gibi taranmaz. Tarama sonunda yalniz durumlari yoklanir (HEAD; sunucu 405/501 donerse govde okunmadan GET). `pages`'e satir yazilir ki `page_links` hedefi cozulsun ve kirik varlik linki `BROKEN_INTERNAL_LINK` uretsin — ama `MaxPages` butcesinden dusmez, `pages_crawled`'a sayilmaz ve skoru sulandirmaz. Tavan `maxAssetChecks`.
 - **Durum**: normal bitis `completed`; `MaxPages`/`MaxDepth` yuzunden kuyrukta URL kaldiysa `partial`; iptal `cancelled`; kok URL alinamazsa `failed`. Tekil sayfa hatasi crawl'i dusurmez — `status_code = 0` yazilir ve `HTTP_STATUS` tetiklenir.
 - **Link grafigi**: tarama sonrasi `page_links.to_page_id` cozulur, `pages.inlink_count` / `outlink_internal` / `outlink_external` hesaplanir.
+- **Derinlik**: `pages.depth` tarama sonunda link grafigi uzerinden hesaplanir — tohumlardan (kok + sitemap URL'leri) en kisa mesafe. Getirme sirasindan degil grafikten geldigi icin `concurrency` degistiginde sonuc degismez. `MaxDepth` tavani ise kuyruga alirken ebeveynin derinligine bakar.
 
-`crawl_settings` (jsonb, site basina): `maxPages` (500), `maxDepth` (5), `delayMs` (500), `concurrency` (3), `renderJs` (false), `includePatterns`, `excludePatterns`. Desenler mutlak URL'e karsi **regex** (IgnoreCase, 1 sn timeout); `include` bos degilse en az biri eslesmeli.
+`crawl_settings` (jsonb, site basina): `maxPages` (500), `maxDepth` (5), `delayMs` (500), `concurrency` (3), `renderJs` (false), `maxAssetChecks` (200, 0 → kapali), `includePatterns`, `excludePatterns`. Desenler mutlak URL'e karsi **regex** (IgnoreCase, 1 sn timeout); `include` bos degilse en az biri eslesmeli.
 
 `renderJs: true` ise sayfa Playwright/Chromium ile render edilir (JS calisir); aksi halde duz `HttpClient`.
+
+### Gorseller
+
+Her `<img>` icin tarayicinin yukleyecegi **tek** adres alinir: `src` → `data-src`/`data-lazy-src` → `srcset`/`data-srcset`'in ilk adayi → kapsayan `<picture>` icindeki `source`. Ustune `link[rel=preload][as=image]` eklenir. Boylece srcset'li tek bir gorsel olcum butcesini tuketmez. `alt` sayimi (`images_total` / `images_no_alt`) `<img>` elemanlari uzerinden yapilmaya devam eder.
+
+Sayfa basina en fazla `Crawler:MaxImageChecksPerPage` gorselin indirme boyutu HEAD ile olculur (`IMAGE_TOO_LARGE`). Bunlar sayfa disi ek isteklerdir; bu yuzden **robots.txt'ye uyar** ve aralarinda `delayMs` beklenir. robots yalniz sitenin kendi authority'sindeki adreslere uygulanir — CDN'in politikasini bilmiyoruz. Olcumler crawl boyunca URL bazinda onbelleklenir, bu yuzden her sayfadaki ayni logo tek kez sorulur.
 
 ### Kurallar ve skor
 

@@ -11,6 +11,10 @@ namespace SeoCopilot.Crawler;
 /// <summary>
 /// HTML govdesini AngleSharp ile ayristirip pages tablosunu ve kural motorunu besleyen
 /// alanlari cikarir. Nasil getirildiginden (HttpClient / Playwright) bagimsizdir.
+///
+/// Istenen adres ile belgenin adresi ayri tutulur: yonlendirme varsa goreli adresler
+/// varilan URL'e gore cozulmelidir, yoksa <c>/en</c> → <c>/en/</c> gibi bir atlamada
+/// sayfadaki <c>href="urun"</c> yanlislikla koke cozulur ve olmayan URL uretilir.
 /// </summary>
 public sealed class HtmlAnalyzer(int maxMainTextChars)
 {
@@ -20,9 +24,19 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
     /// <summary>Baslik hiyerarsisi sayilirken yok sayilan kapsayicilar — menu basliklari yanilgi yaratmasin.</summary>
     private const string ChromeSelector = "nav, header, footer, aside";
 
+    /// <param name="requestUrl">
+    /// Istenen adres. <c>pages.url</c> buraya yazilir — yonlendirme olsa da crawl'in
+    /// kuyrugundaki kimlik budur.
+    /// </param>
+    /// <param name="documentUrl">
+    /// Belgenin gercek adresi: yonlendirmeler izlendikten <em>sonra</em> varilan URL.
+    /// Goreli adresler (link, canonical, gorsel) buna gore cozulur — RFC 3986 ve
+    /// tarayicilar da boyle yapar. Yonlendirme yoksa <paramref name="requestUrl"/> ile aynidir.
+    /// </param>
     public async Task<ExtractedPage> AnalyzeAsync(
         string html,
         Uri requestUrl,
+        Uri documentUrl,
         Uri siteBaseUri,
         int statusCode,
         string? contentType,
@@ -33,12 +47,12 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
         CancellationToken ct = default)
     {
         var context = BrowsingContext.New(Configuration.Default);
-        var doc = await context.OpenAsync(req => req.Content(html).Address(requestUrl.AbsoluteUri), ct);
+        var doc = await context.OpenAsync(req => req.Content(html).Address(documentUrl.AbsoluteUri), ct);
 
-        // Goreli linkler once <base href>, yoksa istek URL'ine gore cozulur.
-        var linkBase = requestUrl;
+        // Goreli linkler once <base href>, yoksa belgenin adresine gore cozulur.
+        var linkBase = documentUrl;
         var baseHref = doc.QuerySelector("base[href]")?.GetAttribute("href");
-        if (baseHref is not null && UrlNormalizer.TryNormalize(baseHref, requestUrl, out var declaredBase))
+        if (baseHref is not null && UrlNormalizer.TryNormalize(baseHref, documentUrl, out var declaredBase))
             linkBase = declaredBase;
 
         var title = doc.QuerySelector("title")?.TextContent?.Trim();
@@ -60,7 +74,7 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
         var robotsMeta = CombineRobots(doc.QuerySelector("meta[name=robots]")?.GetAttribute("content"), xRobotsTag);
         var openGraph = ExtractOpenGraph(doc);
         var schemaTypes = ExtractSchemaTypes(doc);
-        var imageUrls = ExtractImageUrls(images, linkBase);
+        var imageUrls = ExtractImageUrls(doc, images, linkBase);
         var lang = doc.DocumentElement?.GetAttribute("lang")?.Trim();
 
         // DOM'u degistirdigi icin en son: script/nav/footer gibi elemanlari siler.
@@ -136,18 +150,76 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
             .Select(e => e.LocalName[1] - '0')
     ];
 
-    private static List<string> ExtractImageUrls(IEnumerable<IElement> images, Uri linkBase)
+    /// <summary>Lazy-load temalarinin src yerine kullandigi nitelikler, oncelik sirasiyla.</summary>
+    private static readonly string[] ImageSourceAttributes =
+        ["src", "data-src", "data-lazy-src", "data-original", "data-echo"];
+
+    private static readonly string[] ImageSrcSetAttributes = ["srcset", "data-srcset", "data-lazy-srcset"];
+
+    /// <summary>
+    /// Gorsel adresleri. Her &lt;img&gt; icin tarayicinin yukleyecegi <em>tek</em> adres alinir
+    /// (src → data-src → srcset'in ilk adayı → kapsayan &lt;picture&gt; icindeki source),
+    /// ustune LCP acisindan onemli olan preload gorselleri eklenir. Boylece srcset'li bir
+    /// gorsel olcum butcesini tek basina tuketmez.
+    /// </summary>
+    private static List<string> ExtractImageUrls(IDocument doc, IEnumerable<IElement> images, Uri linkBase)
     {
         var urls = new List<string>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var img in images)
+        void Add(string? candidate)
         {
-            if (!UrlNormalizer.TryNormalize(img.GetAttribute("src"), linkBase, out var url)) continue;
+            if (!UrlNormalizer.TryNormalize(candidate, linkBase, out var url)) return;
             if (seen.Add(url.AbsoluteUri)) urls.Add(url.AbsoluteUri);
         }
 
+        foreach (var img in images)
+            Add(PrimaryImageSource(img));
+
+        foreach (var preload in doc.QuerySelectorAll("link[rel~=preload][as=image]"))
+            Add(preload.GetAttribute("href") ?? FirstSrcSetCandidate(preload.GetAttribute("imagesrcset")));
+
         return urls;
+    }
+
+    private static string? PrimaryImageSource(IElement img)
+    {
+        foreach (var attribute in ImageSourceAttributes)
+        {
+            var value = img.GetAttribute(attribute);
+            if (!string.IsNullOrWhiteSpace(value)) return value;
+        }
+
+        foreach (var attribute in ImageSrcSetAttributes)
+        {
+            if (FirstSrcSetCandidate(img.GetAttribute(attribute)) is string candidate) return candidate;
+        }
+
+        // <picture><source srcset=...><img> — img'de adres yoksa kardes source'a bak.
+        var sources = img.Closest("picture")?.QuerySelectorAll("source") ?? Enumerable.Empty<IElement>();
+        foreach (var source in sources)
+        {
+            foreach (var attribute in ImageSrcSetAttributes)
+            {
+                if (FirstSrcSetCandidate(source.GetAttribute(attribute)) is string candidate) return candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>srcset ilk adayi: "a.jpg 1x, b.jpg 2x" → "a.jpg".</summary>
+    private static string? FirstSrcSetCandidate(string? srcset)
+    {
+        if (string.IsNullOrWhiteSpace(srcset)) return null;
+
+        foreach (var part in srcset.Split(',', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var candidate = part.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            if (!string.IsNullOrEmpty(candidate)) return candidate;
+        }
+
+        return null;
     }
 
     private static (string? Json, List<string> Tags) ExtractOpenGraph(IDocument doc)

@@ -22,8 +22,12 @@ public sealed class PageExtractor(
     private readonly CrawlerOptions _options = options.Value;
     private readonly HtmlAnalyzer _analyzer = new(options.Value.MaxMainTextChars);
 
-    /// <summary>Gorsel boyutu onbellegi — ayni logo her sayfada yeniden sorulmasin. null = olculemedi.</summary>
-    private readonly ConcurrentDictionary<string, long?> _imageSizes = new(StringComparer.Ordinal);
+    /// <summary>
+    /// Gorsel boyutu onbellegi — ayni logo her sayfada yeniden sorulmasin. Deger olcumun
+    /// kendisi degil <see cref="Task{TResult}"/>'i: ayni adres iki sayfada es zamanli gecerse
+    /// ikinci istek acilmaz, birincinin sonucu beklenir. Sonuc null = olculemedi.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, Task<long?>> _imageSizes = new(StringComparer.Ordinal);
 
     public async Task<ExtractedPage> ExtractAsync(Uri url, PageFetchOptions fetch, CancellationToken ct = default)
     {
@@ -31,7 +35,74 @@ public sealed class PageExtractor(
             ? await ExtractRenderedAsync(url, fetch, ct)
             : await ExtractHttpAsync(url, fetch, ct);
 
-        return page with { ImageSizes = await MeasureImagesAsync(page.ImageUrls, ct) };
+        return page with { ImageSizes = await MeasureImagesAsync(page.ImageUrls, fetch, ct) };
+    }
+
+    /// <summary>
+    /// HEAD ile durum yoklar. Bazi sunucular HEAD'e 405/501 doner — o durumda govde
+    /// okunmadan GET denenir (ResponseHeadersRead).
+    /// </summary>
+    public async Task<ExtractedPage> ProbeAsync(Uri url, CancellationToken ct = default)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        try
+        {
+            var (status, contentType, redirectTo) = await ProbeCoreAsync(url, HttpMethod.Head, ct);
+
+            if (status is (int)HttpStatusCode.MethodNotAllowed or (int)HttpStatusCode.NotImplemented)
+                (status, contentType, redirectTo) = await ProbeCoreAsync(url, HttpMethod.Get, ct);
+
+            stopwatch.Stop();
+            return new ExtractedPage
+            {
+                Url = url.AbsoluteUri,
+                StatusCode = status,
+                ContentType = contentType,
+                RedirectTo = redirectTo,
+                ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds
+            };
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            stopwatch.Stop();
+            return ExtractedPage.Failed(url, (int)stopwatch.ElapsedMilliseconds);
+        }
+    }
+
+    private async Task<(int Status, string? ContentType, string? RedirectTo)> ProbeCoreAsync(
+        Uri url, HttpMethod method, CancellationToken ct)
+    {
+        var current = url;
+        string? redirectTo = null;
+        HttpResponseMessage? response = null;
+
+        try
+        {
+            for (var hop = 0; ; hop++)
+            {
+                response?.Dispose();
+                using var request = new HttpRequestMessage(method, current);
+                response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+
+                if (!IsRedirect(response.StatusCode) || hop >= _options.MaxRedirects) break;
+
+                var location = response.Headers.Location;
+                if (location is null) break;
+
+                current = new Uri(current, location);
+                redirectTo = current.AbsoluteUri;
+            }
+
+            return ((int)response.StatusCode, response.Content.Headers.ContentType?.ToString(), redirectTo);
+        }
+        finally
+        {
+            response?.Dispose();
+        }
     }
 
     private async Task<ExtractedPage> ExtractHttpAsync(Uri url, PageFetchOptions fetch, CancellationToken ct)
@@ -84,8 +155,9 @@ public sealed class PageExtractor(
             var (html, size) = await ReadCappedAsync(response, ct);
             stopwatch.Stop();
 
+            // Goreli adresler zincirin sonundaki belgeye gore cozulur — `current`, `url` degil.
             var page = await _analyzer.AnalyzeAsync(
-                html, url, fetch.BaseUri, status, contentType, redirectTo,
+                html, url, current, fetch.BaseUri, status, contentType, redirectTo,
                 (int)stopwatch.ElapsedMilliseconds, size, xRobots, ct);
 
             return page with { RedirectCount = redirects };
@@ -105,6 +177,9 @@ public sealed class PageExtractor(
         var redirectTo = rendered.FinalUrl is not null && rendered.FinalUrl != url.AbsoluteUri
             ? rendered.FinalUrl
             : null;
+
+        // Playwright yonlendirmeleri kendi izler; goreli adreslerin tabani varilan adrestir.
+        var documentUrl = Uri.TryCreate(rendered.FinalUrl, UriKind.Absolute, out var final) ? final : url;
         var size = Encoding.UTF8.GetByteCount(rendered.Html);
 
         if (!IsParsableHtml(rendered.StatusCode, rendered.ContentType))
@@ -122,44 +197,86 @@ public sealed class PageExtractor(
         }
 
         return await _analyzer.AnalyzeAsync(
-            rendered.Html, url, fetch.BaseUri, rendered.StatusCode, rendered.ContentType, redirectTo,
+            rendered.Html, url, documentUrl, fetch.BaseUri, rendered.StatusCode, rendered.ContentType, redirectTo,
             (int)stopwatch.ElapsedMilliseconds, size, rendered.XRobotsTag, ct);
     }
 
     /// <summary>
     /// Gorsellerin indirme boyutunu HEAD ile olcer (Content-Length). Sayfa basina
     /// <see cref="CrawlerOptions.MaxImageChecksPerPage"/> gorsele bakilir; olculemeyenler atlanir.
+    ///
+    /// Bunlar sayfa disi ek isteklerdir; bu yuzden robots.txt'ye uyar. robots yalniz sitenin
+    /// kendi authority'sindeki gorsellere uygulanir — CDN'in robots'unu bilmiyoruz.
+    ///
+    /// Istekler acilir acilmaz beklenmez: once hepsi baslatilir, sonra sonuclari toplanir —
+    /// boylece yanit sureleri ust uste biner. Acilislar crawl'in nezaket butcesinden
+    /// (<see cref="PageFetchOptions.Pacer"/>) izin alir; sayfa getirmeleriyle ayni butce.
+    /// Onbellekten donen olcum ne istek ne izin tuketir.
     /// </summary>
     private async Task<IReadOnlyList<MeasuredImage>> MeasureImagesAsync(
-        IReadOnlyList<string> imageUrls, CancellationToken ct)
+        IReadOnlyList<string> imageUrls, PageFetchOptions fetch, CancellationToken ct)
     {
         if (_options.MaxImageChecksPerPage <= 0 || imageUrls.Count == 0) return [];
 
-        var measured = new List<MeasuredImage>();
-        foreach (var imageUrl in imageUrls.Take(_options.MaxImageChecksPerPage))
-        {
-            var bytes = _imageSizes.TryGetValue(imageUrl, out var cached)
-                ? cached
-                : _imageSizes[imageUrl] = await HeadContentLengthAsync(imageUrl, ct);
+        var pending = new List<(string Url, Task<long?> Size)>();
 
-            if (bytes is long size) measured.Add(new MeasuredImage(imageUrl, size));
+        foreach (var imageUrl in imageUrls)
+        {
+            // Butce onbellek isabetlerini de sayar — sayfa basina bakilan gorsel sayisi sabit.
+            if (pending.Count >= _options.MaxImageChecksPerPage) break;
+            if (!IsAllowed(imageUrl, fetch)) continue;
+
+            if (_imageSizes.TryGetValue(imageUrl, out var cached))
+            {
+                pending.Add((imageUrl, cached));
+                continue;
+            }
+
+            // Yeni olcum → nezaket izni. Iki is parcacigi ayni anda kacirirsa biri izni bosa
+            // harcar; hiz eksige degil fazlaya kacmaz, kabul edilebilir.
+            if (fetch.Pacer is not null) await fetch.Pacer.AcquireAsync(ct);
+
+            // Olcum gorevi crawl geneli paylasilir; tek sayfanin token'ina baglanamaz, yoksa
+            // o sayfa iptal olunca ayni gorseli bekleyen digerleri de duser. Sinir: HttpClient.Timeout.
+            pending.Add((imageUrl, _imageSizes.GetOrAdd(imageUrl, HeadContentLengthAsync)));
+        }
+
+        var measured = new List<MeasuredImage>(pending.Count);
+        foreach (var (url, size) in pending)
+        {
+            if (await size.WaitAsync(ct) is long bytes) measured.Add(new MeasuredImage(url, bytes));
         }
 
         return measured;
     }
 
-    private async Task<long?> HeadContentLengthAsync(string imageUrl, CancellationToken ct)
+    /// <summary>Sitenin kendi authority'sindeki adresler robots.txt ile sinirlanir.</summary>
+    private static bool IsAllowed(string imageUrl, PageFetchOptions fetch)
+    {
+        if (fetch.Robots is null) return true;
+        if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var url)) return false;
+
+        var sameAuthority = string.Equals(
+            url.GetLeftPart(UriPartial.Authority),
+            fetch.BaseUri.GetLeftPart(UriPartial.Authority),
+            StringComparison.OrdinalIgnoreCase);
+
+        return !sameAuthority || fetch.Robots.IsAllowed(url);
+    }
+
+    /// <summary>
+    /// Tek gorselin boyutu. Sonucu birden cok sayfa paylastigi icin token almaz —
+    /// suresini <see cref="HttpClient.Timeout"/> sinirlar. Hicbir kosulda firlatmaz:
+    /// onbellege hatali gorev yazilmasin.
+    /// </summary>
+    private async Task<long?> HeadContentLengthAsync(string imageUrl)
     {
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Head, imageUrl);
-            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
 
             return response.IsSuccessStatusCode ? response.Content.Headers.ContentLength : null;
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            throw;
         }
         catch (Exception)
         {

@@ -107,6 +107,23 @@ public class UrlNormalizerTests
         Assert.Null(UrlNormalizer.NormalizeSiteBaseUrl(input));
     }
 
+    [Theory]
+    [InlineData("https://example.com/dosyalar/katalog.pdf", true)]
+    [InlineData("https://example.com/uploads/2024/foto.JPG", true)]
+    [InlineData("https://example.com/tema/stil.css", true)]
+    [InlineData("https://example.com/arsiv.tar.gz", true)]
+    [InlineData("https://example.com/indir.pdf?v=2", true)]
+    [InlineData("https://example.com/", false)]
+    [InlineData("https://example.com/blog/yazi", false)]
+    [InlineData("https://example.com/urun.html", false)]
+    [InlineData("https://example.com/index.php", false)]
+    [InlineData("https://example.com/sayfa.aspx", false)]
+    [InlineData("https://example.com/v1.2/dokuman", false)]
+    public void Asset_detection_uses_the_file_extension(string url, bool expected)
+    {
+        Assert.Equal(expected, UrlNormalizer.IsLikelyAsset(new Uri(url)));
+    }
+
     [Fact]
     public void Hash_is_stable_and_url_specific()
     {

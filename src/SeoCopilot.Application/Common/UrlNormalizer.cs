@@ -16,6 +16,34 @@ public static class UrlNormalizer
         "mc_cid", "mc_eid", "_ga", "_gl", "igshid", "ref_src"
     };
 
+    /// <summary>
+    /// HTML sayfasi degil, indirilebilir varlik olduguna isaret eden uzantilar.
+    /// Bunlar taranmaz; yalniz durum yoklamasi yapilir (kirik link tespiti icin).
+    /// </summary>
+    private static readonly HashSet<string> AssetExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".svg", ".ico", ".bmp", ".tif", ".tiff",
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".csv", ".rtf", ".odt", ".ods", ".odp",
+        ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2",
+        ".mp3", ".mp4", ".m4a", ".avi", ".mov", ".wmv", ".webm", ".ogg", ".ogv", ".wav", ".flac",
+        ".woff", ".woff2", ".ttf", ".eot", ".otf",
+        ".css", ".js", ".mjs", ".map", ".json", ".xml", ".rss", ".atom", ".txt",
+        ".exe", ".dmg", ".apk", ".msi", ".pkg", ".deb", ".rpm"
+    };
+
+    /// <summary>Uzantisina bakarak URL'in indirilebilir bir varlik olup olmadigini kestirir.</summary>
+    public static bool IsLikelyAsset(Uri url)
+    {
+        var path = url.AbsolutePath;
+        var slash = path.LastIndexOf('/');
+        var name = slash < 0 ? path : path[(slash + 1)..];
+
+        var dot = name.LastIndexOf('.');
+        if (dot < 0 || dot == name.Length - 1) return false;
+
+        return AssetExtensions.Contains(name[dot..]);
+    }
+
     /// <summary>Goreli veya mutlak href'i, base'e gore kanonik mutlak URL'e cevirir.</summary>
     public static bool TryNormalize(string? href, Uri baseUri, out Uri result)
     {

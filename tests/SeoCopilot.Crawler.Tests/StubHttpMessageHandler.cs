@@ -10,8 +10,14 @@ namespace SeoCopilot.Crawler.Tests;
 public sealed class StubHttpMessageHandler : HttpMessageHandler
 {
     private readonly Dictionary<string, Func<HttpResponseMessage>> _routes = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Func<HttpMethod, HttpResponseMessage>> _methodRoutes = new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly Lock _calls = new();
 
     public List<string> Requests { get; } = [];
+
+    /// <summary>Metodu da tasiyan cagri kaydi — HEAD/GET ayrimini dogrulamak icin.</summary>
+    public List<(string Method, string Url)> Calls { get; } = [];
 
     public StubHttpMessageHandler Map(string url, string body, string contentType = "text/html", HttpStatusCode status = HttpStatusCode.OK)
     {
@@ -51,14 +57,36 @@ public sealed class StubHttpMessageHandler : HttpMessageHandler
         return this;
     }
 
+    /// <summary>HEAD'e 405 donen sunucular icin — GET normal yanit verir.</summary>
+    public StubHttpMessageHandler MapHeadNotAllowed(string url, string body, string contentType)
+    {
+        _methodRoutes[url] = method => method == HttpMethod.Head
+            ? new HttpResponseMessage(HttpStatusCode.MethodNotAllowed)
+            : new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, contentType)
+            };
+        return this;
+    }
+
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
     {
         var url = request.RequestUri!.AbsoluteUri;
-        Requests.Add(url);
 
-        var response = _routes.TryGetValue(url, out var factory)
-            ? factory()
-            : new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent(string.Empty) };
+        // Gorsel olcumu istekleri ust uste binebilir — kayit listeleri korunmali.
+        lock (_calls)
+        {
+            Requests.Add(url);
+            Calls.Add((request.Method.Method, url));
+        }
+
+        HttpResponseMessage response;
+        if (_methodRoutes.TryGetValue(url, out var byMethod))
+            response = byMethod(request.Method);
+        else
+            response = _routes.TryGetValue(url, out var factory)
+                ? factory()
+                : new HttpResponseMessage(HttpStatusCode.NotFound) { Content = new StringContent(string.Empty) };
 
         response.RequestMessage = request;
         return Task.FromResult(response);

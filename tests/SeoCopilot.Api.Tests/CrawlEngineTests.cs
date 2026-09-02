@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using SeoCopilot.Application.Common;
 using SeoCopilot.Application.Services;
 using SeoCopilot.Domain.Entities.Crawling;
 using SeoCopilot.Domain.Entities.Json;
@@ -62,6 +63,16 @@ public class CrawlEngineTests(PostgresFixture fixture) : IClassFixture<PostgresF
         }
     }
 
+    /// <summary>Ikili varlik satirlari haric, taranan HTML sayfalarinin yollari.</summary>
+    private static List<string> HtmlPaths(CrawlResult result) =>
+        [.. result.Pages
+            .Where(p => !UrlNormalizer.IsLikelyAsset(new Uri(p.Url)))
+            .Select(p => new Uri(p.Url).AbsolutePath)
+            .OrderBy(p => p)];
+
+    private static List<Page> AssetRows(CrawlResult result) =>
+        [.. result.Pages.Where(p => UrlNormalizer.IsLikelyAsset(new Uri(p.Url)))];
+
     [Fact]
     public async Task Crawls_every_reachable_page_and_honours_robots()
     {
@@ -69,7 +80,7 @@ public class CrawlEngineTests(PostgresFixture fixture) : IClassFixture<PostgresF
         await using var factory = fixture.CreateFactory();
 
         var result = await CrawlAsync(factory, webSite, "engine-basic@example.com");
-        var paths = result.Pages.Select(p => new Uri(p.Url).AbsolutePath).OrderBy(p => p).ToList();
+        var paths = HtmlPaths(result);
 
         Assert.Equal(CrawlStatus.Completed, result.Crawl.Status);
         Assert.Equal(["/", "/a", "/b", "/c", "/kirik", "/sitemap-only"], paths);
@@ -93,6 +104,25 @@ public class CrawlEngineTests(PostgresFixture fixture) : IClassFixture<PostgresF
         Assert.Equal(0, byPath["/"].Depth);
         Assert.Equal(0, byPath["/sitemap-only"].Depth); // sitemap'ten geldigi icin tohum
         Assert.Equal(1, byPath["/a"].Depth);
+        Assert.Equal(2, byPath["/c"].Depth);
+    }
+
+    [Fact]
+    public async Task Depth_does_not_drift_with_higher_concurrency()
+    {
+        await using var webSite = await TestWebSite.StartAsync();
+        await using var factory = fixture.CreateFactory();
+
+        // Paralel getiriciler bir URL'i once hangi ebeveynin kesfettigini yanit surelerine
+        // birakir. Derinlik link grafigindan hesaplandigi icin sonuc bundan etkilenmemeli.
+        var result = await CrawlAsync(factory, webSite, "engine-depth-concurrent@example.com",
+            new CrawlSettings { DelayMs = 0, Concurrency = 8 });
+        var byPath = result.Pages.ToDictionary(p => new Uri(p.Url).AbsolutePath, p => p);
+
+        Assert.Equal(0, byPath["/"].Depth);
+        Assert.Equal(0, byPath["/sitemap-only"].Depth);
+        Assert.Equal(1, byPath["/a"].Depth);
+        Assert.Equal(1, byPath["/b"].Depth);
         Assert.Equal(2, byPath["/c"].Depth);
     }
 
@@ -122,7 +152,7 @@ public class CrawlEngineTests(PostgresFixture fixture) : IClassFixture<PostgresF
 
         // dis link + nofollow ayrimi
         Assert.Equal(1, home.OutlinkExternal);
-        Assert.Equal(4, home.OutlinkInternal); // /a /b /kirik /gizli/x
+        Assert.Equal(6, home.OutlinkInternal); // /a /b /kirik /gizli/x + iki pdf
 
         var noIndex = result.Pages.Single(p => new Uri(p.Url).AbsolutePath == "/c");
         Assert.Contains("noindex", noIndex.RobotsMeta);
@@ -281,6 +311,75 @@ public class CrawlEngineTests(PostgresFixture fixture) : IClassFixture<PostgresF
         Assert.DoesNotContain("/kirik", paths);
         Assert.DoesNotContain("/c", paths);
         Assert.Contains("/a", paths);
+    }
+
+    [Fact]
+    public async Task Binary_assets_are_probed_but_not_counted_as_pages()
+    {
+        await using var webSite = await TestWebSite.StartAsync();
+        await using var factory = fixture.CreateFactory();
+
+        var result = await CrawlAsync(factory, webSite, "engine-assets@example.com");
+        var assets = AssetRows(result);
+
+        Assert.Equal(2, assets.Count);
+
+        var katalog = assets.Single(a => a.Url.EndsWith("/katalog.pdf"));
+        Assert.Equal(200, katalog.StatusCode);
+        Assert.Contains("application/pdf", katalog.ContentType);
+        Assert.Equal(404, assets.Single(a => a.Url.EndsWith("/eksik.pdf")).StatusCode);
+
+        // Govde indirilmedi — sayfa alanlari bos
+        Assert.Null(katalog.Title);
+        Assert.Equal(0, katalog.WordCount);
+        Assert.Null(katalog.ContentHash);
+
+        // Sayfa butcesinden dusmez
+        Assert.Equal(6, result.Crawl.PagesCrawled);
+        Assert.Equal(6, result.Crawl.PagesDiscovered);
+    }
+
+    [Fact]
+    public async Task Assets_are_not_evaluated_by_page_rules()
+    {
+        await using var webSite = await TestWebSite.StartAsync();
+        await using var factory = fixture.CreateFactory();
+
+        var result = await CrawlAsync(factory, webSite, "engine-assetrules@example.com");
+        var assetIds = AssetRows(result).Select(a => a.Id).ToHashSet();
+
+        // 200 donen bir PDF "title yok, h1 yok, icerik zayif" diye raporlanmamali.
+        Assert.DoesNotContain(result.Issues, i => i.PageId is Guid id && assetIds.Contains(id));
+    }
+
+    [Fact]
+    public async Task Broken_asset_link_is_reported_as_a_broken_internal_link()
+    {
+        await using var webSite = await TestWebSite.StartAsync();
+        await using var factory = fixture.CreateFactory();
+
+        var result = await CrawlAsync(factory, webSite, "engine-brokenasset@example.com");
+
+        var broken = result.Issues.Single(i => i.RuleCode == "BROKEN_INTERNAL_LINK");
+        Assert.Contains(broken.Evidence.SampleUrls, u => u.EndsWith("/eksik.pdf"));
+        Assert.Contains(broken.Evidence.SampleUrls, u => u.EndsWith("/kirik"));
+    }
+
+    [Fact]
+    public async Task Asset_probing_can_be_switched_off()
+    {
+        await using var webSite = await TestWebSite.StartAsync();
+        await using var factory = fixture.CreateFactory();
+
+        var result = await CrawlAsync(factory, webSite, "engine-noassets@example.com",
+            new CrawlSettings { DelayMs = 0, MaxAssetChecks = 0 });
+
+        Assert.Empty(AssetRows(result));
+        Assert.Equal(6, result.Crawl.PagesCrawled);
+
+        // Yoklama kapaliyken hedef durumu bilinmez — kirik varlik linki de bildirilmez.
+        var broken = result.Issues.Single(i => i.RuleCode == "BROKEN_INTERNAL_LINK");
+        Assert.DoesNotContain(broken.Evidence.SampleUrls, u => u.EndsWith("/eksik.pdf"));
     }
 
     [Fact]

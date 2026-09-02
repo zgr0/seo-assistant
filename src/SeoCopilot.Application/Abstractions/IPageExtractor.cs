@@ -4,10 +4,27 @@ namespace SeoCopilot.Application.Abstractions;
 public interface IPageExtractor
 {
     Task<ExtractedPage> ExtractAsync(Uri url, PageFetchOptions options, CancellationToken ct = default);
+
+    /// <summary>
+    /// Ikili varlik (pdf, jpg, zip...) icin yalniz durum yoklamasi — govde indirilmez.
+    /// Kirik ic link tespiti icin yeterli; sayfa alanlari doldurulmaz.
+    /// </summary>
+    Task<ExtractedPage> ProbeAsync(Uri url, CancellationToken ct = default);
 }
 
 /// <summary>Tek bir getirmenin davranisi. <see cref="BaseUri"/> goreli linkleri cozmek icin.</summary>
-public sealed record PageFetchOptions(Uri BaseUri, bool RenderJs = false);
+/// <param name="Robots">
+/// Sayfa disi istekleri (gorsel olcumu) da robots.txt'ye uydurmak icin. null → kisit yok.
+/// </param>
+/// <param name="Pacer">
+/// Sayfa icinde tetiklenen ek isteklerin (gorsel olcumu) tabi oldugu nezaket butcesi.
+/// Crawl'in sayfa getirmeleriyle ayni butce. null → sinir yok.
+/// </param>
+public sealed record PageFetchOptions(
+    Uri BaseUri,
+    bool RenderJs = false,
+    IRobotsPolicy? Robots = null,
+    IRequestPacer? Pacer = null);
 
 /// <summary>Sayfadan cikarilmis tek bir link.</summary>
 public sealed record ExtractedLink(Uri Url, string? AnchorText, bool IsNofollow, bool IsInternal);

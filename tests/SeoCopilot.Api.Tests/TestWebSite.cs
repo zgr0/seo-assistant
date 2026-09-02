@@ -44,6 +44,8 @@ public sealed class TestWebSite : IAsyncDisposable
         "sitemap-only" => Html(Simple("Yalniz sitemap'te olan sayfa", "Bu sayfaya hicbir sayfadan link yok.")),
         "gizli/x" => Html(Simple("Gizli sayfa", "robots ile engellendi.")),
         "kirik" => Results.Content(Simple("Bulunamadi", "yok"), "text/html", Encoding.UTF8, 404),
+        "dosyalar/katalog.pdf" => Results.Content("%PDF-1.7", "application/pdf"),
+        // dosyalar/eksik.pdf bilerek tanimsiz — varsayilan 404'e duser.
         "robots.txt" => Results.Content(Robots(origin), "text/plain"),
         "sitemap.xml" => Results.Content(Sitemap(origin), "application/xml"),
         _ => Results.Content("<html><body>yok</body></html>", "text/html", Encoding.UTF8, 404)
@@ -85,6 +87,8 @@ public sealed class TestWebSite : IAsyncDisposable
                 <a href="/b">ikinci sayfa</a>
                 <a href="/kirik">kirik link</a>
                 <a href="/gizli/x">gizli alan</a>
+                <a href="/dosyalar/katalog.pdf">katalog</a>
+                <a href="/dosyalar/eksik.pdf">eksik katalog</a>
                 <a href="https://disari.example/x" rel="nofollow">dis site</a>
               </body>
             </html>

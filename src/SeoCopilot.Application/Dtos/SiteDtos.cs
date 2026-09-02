@@ -21,11 +21,12 @@ public record CrawlSettingsDto(
     int? DelayMs = null,
     bool? RenderJs = null,
     int? Concurrency = null,
+    int? MaxAssetChecks = null,
     List<string>? IncludePatterns = null,
     List<string>? ExcludePatterns = null)
 {
     public static CrawlSettingsDto From(CrawlSettings s) => new(
-        s.MaxPages, s.MaxDepth, s.DelayMs, s.RenderJs, s.Concurrency,
+        s.MaxPages, s.MaxDepth, s.DelayMs, s.RenderJs, s.Concurrency, s.MaxAssetChecks,
         [.. s.IncludePatterns], [.. s.ExcludePatterns]);
 
     /// <summary>Verilen alanlari hedefe uygular.</summary>
@@ -36,6 +37,7 @@ public record CrawlSettingsDto(
         if (DelayMs is int delay) target.DelayMs = Math.Clamp(delay, 0, 60_000);
         if (RenderJs is bool render) target.RenderJs = render;
         if (Concurrency is int concurrency) target.Concurrency = Math.Clamp(concurrency, 1, 16);
+        if (MaxAssetChecks is int assetChecks) target.MaxAssetChecks = Math.Clamp(assetChecks, 0, 5_000);
         if (IncludePatterns is not null) target.IncludePatterns = [.. IncludePatterns];
         if (ExcludePatterns is not null) target.ExcludePatterns = [.. ExcludePatterns];
     }
