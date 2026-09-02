@@ -33,6 +33,48 @@ Api  ->  Application + Infrastructure + Crawler + Rules
 
 ## Calistirma
 
+### Docker (hepsi bir arada)
+
+Uc servis: `db` (Postgres), `api` (.NET + Chromium), `web` (Vite build'i servis eden ve
+`/api`'yi api'ye vekilleyen Caddy). Disari yalnizca `web` acilir.
+
+```bash
+cp .env.example .env
+```
+
+`.env` icinde `POSTGRES_PASSWORD` ve `JWT_KEY` **zorunlu** — bos birakilirsa compose baslamaz.
+`JWT_KEY` en az 32 bayt olmali (`openssl rand -base64 48`).
+
+```bash
+docker compose up -d --build
+```
+
+Arayuz: `http://localhost:8080` (degistirmek icin `.env` → `WEB_PORT`).
+
+Sema ilk acilista kurulur: `Database__AutoMigrate=true` ile API `Database.MigrateAsync()`
+calistirir. Varsayilan degeri `false` — yalnizca compose aciyor. Birden fazla API replikasi
+calistiracaksaniz kapatip migration'i ayri bir adima alin.
+
+Notlar:
+
+- **Chromium** imaja dahil, `renderJs: true` konteynerde de calisir. Konteynerde kum havuzu
+  kullanilamadigi icin compose `Crawler__BrowserArgs__0=--no-sandbox` gecer.
+- **Hangfire panosu** disari acilmaz. `ASPNETCORE_ENVIRONMENT=Production` oldugundan pano
+  kimlik dogrulamasi ister; gerekirse `api` servisine gecici port yayinlayin.
+- **Postgres portu** yayinlanmaz (makinede zaten 5432'de bir sunucu olabilir).
+  Disaridan baglanmak icin `compose.yaml` icindeki `ports` blogunu acin.
+- **Raporlar** `reports` volume'unde (`/app/App_Data/reports`), veritabani `pgdata`'da kalir.
+- API `UseHttpsRedirection()` cagiriyor ama konteynerde HTTPS portu tanimli olmadigi icin
+  devre disi kalir; TLS'i Caddy'de sonlandirin.
+
+```bash
+docker compose logs -f api      # loglar
+docker compose down             # durdur (veriyi korur)
+docker compose down -v          # veriyi de sil
+```
+
+### Yerel (docker'siz)
+
 Postgres gerekli (docker):
 
 ```bash

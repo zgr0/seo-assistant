@@ -1,0 +1,38 @@
+# .NET build ciktilari
+**/bin/
+**/obj/
+artifacts/
+
+# Web (kendi imajinda npm ci ile kurulur)
+**/node_modules/
+**/dist/
+**/.vite/
+
+# Uretilen raporlar — konteynerde volume'dan gelir
+App_Data/
+
+# Git / IDE / CI
+.git/
+.github/
+.vs/
+.idea/
+**/*.user
+
+# Docker'in kendisi
+compose.yaml
+compose.*.yaml
+**/Dockerfile
+.dockerignore
+
+# Sirlar ve yerel ayarlar
+.env
+**/appsettings.*.Local.json
+**/secrets.json
+
+# Playwright kalintilari
+.playwright/
+playwright-report/
+test-results/
+
+# Testler API imajina girmez
+tests/

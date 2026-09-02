@@ -27,4 +27,11 @@ public sealed class CrawlerOptions
     /// 0 → olcum kapali, kural sessiz kalir. Sonuclar crawl boyunca URL bazinda onbellege alinir.
     /// </summary>
     public int MaxImageChecksPerPage { get; set; } = 10;
+
+    /// <summary>
+    /// Chromium'a gecilecek ek baslatma argumanlari (yalniz RenderJs aciksa kullanilir).
+    /// Konteyner icinde <c>--no-sandbox</c> gerekir: Chromium'un kendi kum havuzu ayricalikli
+    /// cekirdek yetenekleri ister, tipik bir konteynerde bunlar yoktur ve tarayici acilmaz.
+    /// </summary>
+    public string[] BrowserArgs { get; set; } = [];
 }

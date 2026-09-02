@@ -2,6 +2,7 @@ using System.Text;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using SeoCopilot.Api.Adapters;
@@ -12,6 +13,7 @@ using SeoCopilot.Application.Abstractions;
 using SeoCopilot.Crawler;
 using SeoCopilot.Infrastructure;
 using SeoCopilot.Infrastructure.Auth;
+using SeoCopilot.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -68,6 +70,14 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
+
+// Konteyner acilisinda semayi kurmak icin. Varsayilan kapali — tek surum calistiran
+// dagitimlar (compose) icindir; birden fazla replika varsa migration ayri bir adim olmali.
+if (builder.Configuration.GetValue("Database:AutoMigrate", false))
+{
+    using var scope = app.Services.CreateScope();
+    await scope.ServiceProvider.GetRequiredService<SeoCopilotDbContext>().Database.MigrateAsync();
+}
 
 app.UseExceptionHandler();
 

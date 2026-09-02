@@ -1,0 +1,75 @@
+name: seocopilot
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-seocopilot}
+      POSTGRES_USER: ${POSTGRES_USER:-seocopilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env icinde tanimli olmali}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-seocopilot} -d ${POSTGRES_DB:-seocopilot}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    # Makinede zaten 5432'de bir Postgres varsa cakisir; disaridan baglanmak
+    # isterseniz baska bir port secin.
+    # ports:
+    #   - "${DB_PORT:-55432}:5432"
+
+  api:
+    build:
+      context: .
+      dockerfile: src/SeoCopilot.Api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Postgres: >-
+        Host=db;Port=5432;Database=${POSTGRES_DB:-seocopilot};Username=${POSTGRES_USER:-seocopilot};Password=${POSTGRES_PASSWORD}
+
+      # Sema acilista kurulur. Tek surum calistigi icin guvenli; olceklerseniz
+      # kapatip migration'i ayri bir adima alin.
+      Database__AutoMigrate: "true"
+
+      # En az 32 bayt olmali, yoksa uygulama acilista hata verip durur.
+      Jwt__Key: ${JWT_KEY:?JWT_KEY .env icinde tanimli olmali (en az 32 bayt)}
+      Jwt__Issuer: ${JWT_ISSUER:-seocopilot}
+      Jwt__Audience: ${JWT_AUDIENCE:-seocopilot}
+
+      # Konteynerde Chromium'un kum havuzu calismaz — RenderJs bu argumansiz acilmaz.
+      Crawler__BrowserArgs__0: "--no-sandbox"
+
+      Anthropic__ApiKey: ${ANTHROPIC_API_KEY:-}
+      PageSpeed__ApiKey: ${PAGESPEED_API_KEY:-}
+      Reports__Directory: /app/App_Data/reports
+    volumes:
+      - reports:/app/App_Data/reports
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+    # Disari acilmaz; tek giris noktasi web (Caddy). Dogrudan erisim icin acin:
+    # ports:
+    #   - "${API_PORT:-5094}:8080"
+
+  web:
+    build:
+      context: ./src/SeoCopilot.Web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+volumes:
+  pgdata:
+  reports:

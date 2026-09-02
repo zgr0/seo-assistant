@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using Microsoft.Playwright;
 
 namespace SeoCopilot.Crawler;
@@ -14,8 +15,14 @@ public sealed record RenderedPage(
 /// Tek bir Chromium instance'i paylasir, her cagriya izole context verir.
 /// Uygulama omru boyunca singleton olmali. `playwright install chromium` gerekir.
 /// </summary>
-public sealed class PlaywrightBrowserPool : IAsyncDisposable
+/// <param name="options">
+/// DI'dan gelir. Testler parametresiz kurabilsin diye istege bagli — o durumda ek
+/// Chromium argumani gecilmez.
+/// </param>
+public sealed class PlaywrightBrowserPool(IOptions<CrawlerOptions>? options = null) : IAsyncDisposable
 {
+    private readonly string[] _browserArgs = options?.Value.BrowserArgs ?? [];
+
     private IPlaywright? _playwright;
     private IBrowser? _browser;
     private readonly SemaphoreSlim _lock = new(1, 1);
@@ -27,7 +34,11 @@ public sealed class PlaywrightBrowserPool : IAsyncDisposable
         try
         {
             _playwright ??= await Playwright.CreateAsync();
-            _browser ??= await _playwright.Chromium.LaunchAsync(new() { Headless = true });
+            _browser ??= await _playwright.Chromium.LaunchAsync(new()
+            {
+                Headless = true,
+                Args = _browserArgs
+            });
             return _browser;
         }
         finally { _lock.Release(); }
