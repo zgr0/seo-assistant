@@ -32,6 +32,21 @@ public sealed class StubHttpMessageHandler : HttpMessageHandler
         return this;
     }
 
+    /// <summary>
+    /// Govdeyi oldugu gibi, verilen Content-Type ile servis eder. <see cref="Map"/> her zaman
+    /// UTF-8 kodladigi icin UTF-8 disi charset'leri denemek buradan gecer.
+    /// </summary>
+    public StubHttpMessageHandler MapBytes(string url, byte[] body, string contentType)
+    {
+        _routes[url] = () =>
+        {
+            var content = new ByteArrayContent(body);
+            content.Headers.TryAddWithoutValidation("Content-Type", contentType);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = content };
+        };
+        return this;
+    }
+
     public StubHttpMessageHandler MapRedirect(string url, string location, HttpStatusCode status = HttpStatusCode.MovedPermanently)
     {
         _routes[url] = () =>

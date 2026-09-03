@@ -21,6 +21,13 @@ public sealed record PageInput
     /// <summary>Sayfaya varmak icin izlenen yonlendirme sayisi.</summary>
     public int RedirectCount { get; init; }
 
+    /// <summary>
+    /// Govde baska bir adresten geldi mi. true ise bu URL'in kendi icerigi yoktur; icerik
+    /// kurallari yonlendirmenin <em>hedefinde</em> degerlendirilir, burada degil — yoksa ayni
+    /// belge iki kez raporlanir ve canonical kendi adresini gostermiyor sanilir.
+    /// </summary>
+    public bool IsRedirect { get; init; }
+
     /// <summary>meta[name=robots] + X-Robots-Tag birlesimi.</summary>
     public string? RobotsMeta { get; init; }
 

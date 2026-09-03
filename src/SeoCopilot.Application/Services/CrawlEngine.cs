@@ -155,24 +155,40 @@ public sealed class CrawlEngine(
                         pageFindings.Add((page, finding));
                 }
 
-                var (internalCount, externalCount) = CollectLinks(crawl.Id, page, extracted, links);
-                page.OutlinkInternal = internalCount;
-                page.OutlinkExternal = externalCount;
-
-                foreach (var link in extracted.Links)
+                // Yonlendirilen URL'in kendi belgesi yok; govdedeki linkler hedefe ait.
+                // Buraya yazilirsa page_links'te ayni link iki kez cikar ve inlink_count sisir.
+                // Onun yerine hedef kuyruga alinir, linkler orada toplanir.
+                if (extracted.RedirectTo is not null)
                 {
-                    if (!link.IsInternal || link.IsNofollow) continue;
-
-                    // Ikili varliklar kuyruga girmez; ayri listede yalniz durumu yoklanir.
-                    if (UrlNormalizer.IsLikelyAsset(link.Url))
+                    // Derinlik artmaz — yonlendirme bir link atlamasi degil.
+                    // Hedefe baska bir sayfa zaten link verdiyse `seen` ikinci kez almaz.
+                    if (UrlNormalizer.TryNormalize(extracted.RedirectTo, out var target)
+                        && TryAccept(target, baseUri, robots, include, exclude, seen, blocked))
                     {
-                        if (TryAccept(link.Url, baseUri, robots, include, exclude, assetSeen, blocked))
-                            assets.Add(new FrontierItem(link.Url, item.Depth + 1));
-                        continue;
+                        Enqueue(target, item.Depth);
                     }
+                }
+                else
+                {
+                    var (internalCount, externalCount) = CollectLinks(crawl.Id, page, extracted, links);
+                    page.OutlinkInternal = internalCount;
+                    page.OutlinkExternal = externalCount;
 
-                    if (!TryAccept(link.Url, baseUri, robots, include, exclude, seen, blocked)) continue;
-                    Enqueue(link.Url, item.Depth + 1);
+                    foreach (var link in extracted.Links)
+                    {
+                        if (!link.IsInternal || link.IsNofollow) continue;
+
+                        // Ikili varliklar kuyruga girmez; ayri listede yalniz durumu yoklanir.
+                        if (UrlNormalizer.IsLikelyAsset(link.Url))
+                        {
+                            if (TryAccept(link.Url, baseUri, robots, include, exclude, assetSeen, blocked))
+                                assets.Add(new FrontierItem(link.Url, item.Depth + 1));
+                            continue;
+                        }
+
+                        if (!TryAccept(link.Url, baseUri, robots, include, exclude, seen, blocked)) continue;
+                        Enqueue(link.Url, item.Depth + 1);
+                    }
                 }
 
                 if (pages.Count - saved >= SaveBatchSize)
@@ -634,6 +650,9 @@ public sealed class CrawlEngine(
 
         var pageFacts = pages
             .Take(htmlCount)
+            // Yonlendirilen URL'in govdesi hedefe ait. Girdide birakilirsa ayni belge iki kez
+            // sayilir ve DUPLICATE_CONTENT / META_TITLE_DUPLICATE kendi hedefiyle eslesir.
+            .Where(p => p.RedirectTo is null)
             .Select(p => new CrawlPageFacts(p.Id, p.Url, p.StatusCode, p.ContentHash)
             {
                 Depth = p.Depth,

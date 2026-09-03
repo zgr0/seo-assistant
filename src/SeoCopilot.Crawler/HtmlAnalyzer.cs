@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -15,15 +16,37 @@ namespace SeoCopilot.Crawler;
 /// Istenen adres ile belgenin adresi ayri tutulur: yonlendirme varsa goreli adresler
 /// varilan URL'e gore cozulmelidir, yoksa <c>/en</c> → <c>/en/</c> gibi bir atlamada
 /// sayfadaki <c>href="urun"</c> yanlislikla koke cozulur ve olmayan URL uretilir.
+///
+/// Govde string olarak degil ham bayt olarak alinir; karakter kodlamasini AngleSharp secer.
 /// </summary>
 public sealed class HtmlAnalyzer(int maxMainTextChars)
 {
+    static HtmlAnalyzer()
+    {
+        // .NET Core yalniz UTF-8/UTF-16/ASCII/Latin1 tasir. windows-1254 (Turkce),
+        // windows-1251, iso-8859-9 gibi eski kod sayfalari bu saglayici olmadan
+        // cozulemez ve AngleSharp UTF-8'e duserek ozel harfleri U+FFFD yapar.
+        // Islem geneli, bir kez: HtmlAnalyzer'a ilk dokunusta calisir.
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+    }
+
     /// <summary>MainText hesaplanirken atilan, icerik tasimayan elemanlar.</summary>
     private const string NoiseSelector = "script, style, noscript, template, svg, nav, header, footer, aside, iframe";
 
     /// <summary>Baslik hiyerarsisi sayilirken yok sayilan kapsayicilar — menu basliklari yanilgi yaratmasin.</summary>
     private const string ChromeSelector = "nav, header, footer, aside";
 
+    /// <param name="body">
+    /// Ham govde baytlari. Coz<em>ul</em>mus string degil: karakter kodlamasini AngleSharp
+    /// secer (once <paramref name="bodyContentType"/>'daki charset, sonra &lt;meta charset&gt;,
+    /// sonra BOM). Onceden UTF-8 varsayarak cozmek windows-1254 gibi sayfalarda butun
+    /// Turkce harfleri yok ediyordu.
+    /// </param>
+    /// <param name="bodyContentType">
+    /// <paramref name="body"/>'yi tanimlayan Content-Type — charset ipucu buradan gelir.
+    /// Kayda gecen <paramref name="contentType"/>'dan ayri: Playwright yolunda govde zaten
+    /// cozulmus gelir, orada bu "utf-8" olur ama sayfanin ilan ettigi charset baska olabilir.
+    /// </param>
     /// <param name="requestUrl">
     /// Istenen adres. <c>pages.url</c> buraya yazilir — yonlendirme olsa da crawl'in
     /// kuyrugundaki kimlik budur.
@@ -34,7 +57,8 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
     /// tarayicilar da boyle yapar. Yonlendirme yoksa <paramref name="requestUrl"/> ile aynidir.
     /// </param>
     public async Task<ExtractedPage> AnalyzeAsync(
-        string html,
+        byte[] body,
+        string? bodyContentType,
         Uri requestUrl,
         Uri documentUrl,
         Uri siteBaseUri,
@@ -47,7 +71,14 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
         CancellationToken ct = default)
     {
         var context = BrowsingContext.New(Configuration.Default);
-        var doc = await context.OpenAsync(req => req.Content(html).Address(documentUrl.AbsoluteUri), ct);
+
+        using var stream = new MemoryStream(body, writable: false);
+        var doc = await context.OpenAsync(
+            req => req
+                .Content(stream)
+                .Header("Content-Type", NormalizeContentType(bodyContentType))
+                .Address(documentUrl.AbsoluteUri),
+            ct);
 
         // Goreli linkler once <base href>, yoksa belgenin adresine gore cozulur.
         var linkBase = documentUrl;
@@ -107,6 +138,23 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
             Lang = lang,
             Links = links
         };
+    }
+
+    /// <summary>
+    /// AngleSharp, Content-Type icindeki parametre adini harfe duyarli ariyor: <c>Charset=</c>
+    /// (buyuk C) ile gelen charset'i gormeyip UTF-8'e dusuyor. Gercek sitelerde bu yazim
+    /// yaygin, o yuzden basligi kucuk harfli <c>charset=</c> ile yeniden kuruyoruz.
+    /// Cozulemeyen basligi oldugu gibi birakiriz — AngleSharp yine &lt;meta&gt;'ya bakabilir.
+    /// </summary>
+    private static string NormalizeContentType(string? contentType)
+    {
+        if (string.IsNullOrWhiteSpace(contentType)) return "text/html";
+        if (!MediaTypeHeaderValue.TryParse(contentType, out var parsed)) return contentType;
+
+        var charset = parsed.CharSet?.Trim('"', ' ');
+        var mediaType = string.IsNullOrWhiteSpace(parsed.MediaType) ? "text/html" : parsed.MediaType;
+
+        return string.IsNullOrEmpty(charset) ? mediaType : $"{mediaType}; charset={charset}";
     }
 
     private static List<ExtractedLink> ExtractLinks(IDocument doc, Uri linkBase, Uri siteBaseUri)

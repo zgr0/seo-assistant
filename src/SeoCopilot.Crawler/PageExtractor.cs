@@ -152,13 +152,14 @@ public sealed class PageExtractor(
                 };
             }
 
-            var (html, size) = await ReadCappedAsync(response, ct);
+            var body = await ReadCappedAsync(response, ct);
             stopwatch.Stop();
 
+            // Govde ham bayt olarak gecer; charset'i contentType tasiyor.
             // Goreli adresler zincirin sonundaki belgeye gore cozulur — `current`, `url` degil.
             var page = await _analyzer.AnalyzeAsync(
-                html, url, current, fetch.BaseUri, status, contentType, redirectTo,
-                (int)stopwatch.ElapsedMilliseconds, size, xRobots, ct);
+                body, contentType, url, current, fetch.BaseUri, status, contentType, redirectTo,
+                (int)stopwatch.ElapsedMilliseconds, body.Length, xRobots, ct);
 
             return page with { RedirectCount = redirects };
         }
@@ -180,7 +181,12 @@ public sealed class PageExtractor(
 
         // Playwright yonlendirmeleri kendi izler; goreli adreslerin tabani varilan adrestir.
         var documentUrl = Uri.TryCreate(rendered.FinalUrl, UriKind.Absolute, out var final) ? final : url;
-        var size = Encoding.UTF8.GetByteCount(rendered.Html);
+
+        // Playwright govdeyi zaten cozmus string olarak veriyor. AngleSharp'a bayt olarak
+        // gecerken charset'i acikca utf-8 diyoruz — yoksa sayfanin <meta charset>'ini
+        // (orn. windows-1254) gorup UTF-8 baytlari yanlis cozer.
+        var body = Encoding.UTF8.GetBytes(rendered.Html);
+        var size = body.Length;
 
         if (!IsParsableHtml(rendered.StatusCode, rendered.ContentType))
         {
@@ -197,7 +203,8 @@ public sealed class PageExtractor(
         }
 
         return await _analyzer.AnalyzeAsync(
-            rendered.Html, url, documentUrl, fetch.BaseUri, rendered.StatusCode, rendered.ContentType, redirectTo,
+            body, "text/html; charset=utf-8",
+            url, documentUrl, fetch.BaseUri, rendered.StatusCode, rendered.ContentType, redirectTo,
             (int)stopwatch.ElapsedMilliseconds, size, rendered.XRobotsTag, ct);
     }
 
@@ -285,8 +292,11 @@ public sealed class PageExtractor(
         }
     }
 
-    /// <summary>Govdeyi <see cref="CrawlerOptions.MaxHtmlBytes"/> ile sinirli okur.</summary>
-    private async Task<(string Html, int Bytes)> ReadCappedAsync(HttpResponseMessage response, CancellationToken ct)
+    /// <summary>
+    /// Govdeyi <see cref="CrawlerOptions.MaxHtmlBytes"/> ile sinirli okur. Cozme yapilmaz —
+    /// karakter kodlamasini <see cref="HtmlAnalyzer"/> icinde AngleSharp secer.
+    /// </summary>
+    private async Task<byte[]> ReadCappedAsync(HttpResponseMessage response, CancellationToken ct)
     {
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         using var buffer = new MemoryStream();
@@ -300,8 +310,7 @@ public sealed class PageExtractor(
             buffer.Write(chunk, 0, allowed);
         }
 
-        var bytes = buffer.ToArray();
-        return (Encoding.UTF8.GetString(bytes), bytes.Length);
+        return buffer.ToArray();
     }
 
     private static bool IsRedirect(HttpStatusCode status) => (int)status is >= 300 and < 400;

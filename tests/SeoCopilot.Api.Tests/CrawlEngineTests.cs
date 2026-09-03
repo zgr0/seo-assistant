@@ -83,13 +83,13 @@ public class CrawlEngineTests(PostgresFixture fixture) : IClassFixture<PostgresF
         var paths = HtmlPaths(result);
 
         Assert.Equal(CrawlStatus.Completed, result.Crawl.Status);
-        Assert.Equal(["/", "/a", "/b", "/c", "/kirik", "/sitemap-only"], paths);
+        Assert.Equal(["/", "/a", "/b", "/c", "/eski-adres", "/kirik", "/sitemap-only"], paths);
 
         // robots.txt "/gizli" yolunu kapatiyor
         Assert.DoesNotContain(result.Pages, p => p.Url.Contains("/gizli"));
 
-        Assert.Equal(6, result.Crawl.PagesCrawled);
-        Assert.Equal(6, result.Crawl.PagesDiscovered);
+        Assert.Equal(7, result.Crawl.PagesCrawled);
+        Assert.Equal(7, result.Crawl.PagesDiscovered);
     }
 
     [Fact]
@@ -105,6 +105,38 @@ public class CrawlEngineTests(PostgresFixture fixture) : IClassFixture<PostgresF
         Assert.Equal(0, byPath["/sitemap-only"].Depth); // sitemap'ten geldigi icin tohum
         Assert.Equal(1, byPath["/a"].Depth);
         Assert.Equal(2, byPath["/c"].Depth);
+    }
+
+    [Fact]
+    public async Task Redirected_url_is_recorded_but_not_judged_as_its_own_page()
+    {
+        await using var webSite = await TestWebSite.StartAsync();
+        await using var factory = fixture.CreateFactory();
+
+        var result = await CrawlAsync(factory, webSite, "engine-redirect@example.com");
+        var byPath = result.Pages.ToDictionary(p => new Uri(p.Url).AbsolutePath, p => p);
+
+        // Satir kalir: kirik link cozumu ve REDIRECT_CHAIN icin gerekli.
+        var redirected = byPath["/eski-adres"];
+        Assert.Equal(200, redirected.StatusCode);
+        Assert.EndsWith("/a", redirected.RedirectTo);
+
+        // Govde "/a"ya ait — icerik bulgulari yalniz hedefte uretilir.
+        var contentCodes = result.Issues
+            .Where(i => i.PageId == redirected.Id)
+            .Select(i => i.RuleCode)
+            .Where(code => code is not ("BROKEN_PAGE_4XX" or "SERVER_ERROR_5XX" or "REDIRECT_CHAIN"))
+            .ToList();
+        Assert.Empty(contentCodes);
+
+        // Yonlendirme kaynagi kopya tespitine girmez; "/a" ve "/b" gercek kopyalar.
+        var duplicates = result.Issues.Where(i => i.RuleCode == "DUPLICATE_CONTENT").ToList();
+        Assert.All(duplicates, i =>
+            Assert.DoesNotContain("/eski-adres", string.Join(" ", i.Evidence.SampleUrls)));
+
+        // Hedef normal sekilde taranmis olmali.
+        Assert.Equal(200, byPath["/a"].StatusCode);
+        Assert.Null(byPath["/a"].RedirectTo);
     }
 
     [Fact]
@@ -152,7 +184,7 @@ public class CrawlEngineTests(PostgresFixture fixture) : IClassFixture<PostgresF
 
         // dis link + nofollow ayrimi
         Assert.Equal(1, home.OutlinkExternal);
-        Assert.Equal(6, home.OutlinkInternal); // /a /b /kirik /gizli/x + iki pdf
+        Assert.Equal(7, home.OutlinkInternal); // /a /b /eski-adres /kirik /gizli/x + iki pdf
 
         var noIndex = result.Pages.Single(p => new Uri(p.Url).AbsolutePath == "/c");
         Assert.Contains("noindex", noIndex.RobotsMeta);
@@ -335,8 +367,8 @@ public class CrawlEngineTests(PostgresFixture fixture) : IClassFixture<PostgresF
         Assert.Null(katalog.ContentHash);
 
         // Sayfa butcesinden dusmez
-        Assert.Equal(6, result.Crawl.PagesCrawled);
-        Assert.Equal(6, result.Crawl.PagesDiscovered);
+        Assert.Equal(7, result.Crawl.PagesCrawled);
+        Assert.Equal(7, result.Crawl.PagesDiscovered);
     }
 
     [Fact]
@@ -375,7 +407,7 @@ public class CrawlEngineTests(PostgresFixture fixture) : IClassFixture<PostgresF
             new CrawlSettings { DelayMs = 0, MaxAssetChecks = 0 });
 
         Assert.Empty(AssetRows(result));
-        Assert.Equal(6, result.Crawl.PagesCrawled);
+        Assert.Equal(7, result.Crawl.PagesCrawled);
 
         // Yoklama kapaliyken hedef durumu bilinmez — kirik varlik linki de bildirilmez.
         var broken = result.Issues.Single(i => i.RuleCode == "BROKEN_INTERNAL_LINK");

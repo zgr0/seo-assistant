@@ -191,6 +191,39 @@ public class RuleEngineTests
     }
 
     [Fact]
+    public void Redirected_url_reports_no_content_findings()
+    {
+        // Govde yonlendirmenin hedefine ait. Icerik kurallari orada isletilir; burada
+        // isletilirse ayni belge iki kez raporlanir.
+        var result = RuleEngine.Default().Evaluate(HealthyPage() with
+        {
+            Url = "https://example.com/eski",
+            IsRedirect = true,
+            Title = null,
+            H1 = [],
+            WordCount = 10,
+            ImagesTotal = 3,
+            ImagesNoAlt = 3,
+            HasCanonical = true,
+            CanonicalUrl = "https://example.com/yeni"
+        });
+
+        Assert.Empty(result.Violations);
+    }
+
+    [Fact]
+    public void Redirected_url_still_reports_redirect_chain()
+    {
+        var result = RuleEngine.Default().Evaluate(HealthyPage() with
+        {
+            IsRedirect = true,
+            RedirectCount = 3
+        });
+
+        Assert.Equal("REDIRECT_CHAIN", Assert.Single(result.Violations).Code);
+    }
+
+    [Fact]
     public void Server_error_and_unreachable_page_share_a_code()
     {
         Assert.Equal(

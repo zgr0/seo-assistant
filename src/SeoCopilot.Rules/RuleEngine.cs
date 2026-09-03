@@ -65,7 +65,8 @@ public sealed class RuleEngine
         }
 
         // Sayfa 2xx donmuyorsa icerik kurallarinin bulgusu gurultu — sadece ulasilabilirligi bildir.
-        if (page.StatusCode is < 200 or >= 300)
+        // Yonlendirilen URL'de de ayni sey gecerli: govde hedefe ait, icerik orada olculur.
+        if (page.StatusCode is < 200 or >= 300 || page.IsRedirect)
             violations = [.. violations.Where(v => TransportCodes.Contains(v.Code))];
 
         return new RuleEvaluation(ScoreCalculator.Calculate(violations), violations);

@@ -27,6 +27,7 @@ public sealed class RuleRunnerAdapter : IRuleRunner
             HasCanonical = page.HasCanonical,
             CanonicalUrl = page.CanonicalUrl,
             RedirectCount = page.RedirectCount,
+            IsRedirect = page.RedirectTo is not null,
             RobotsMeta = page.RobotsMeta,
             HeadingLevels = page.HeadingLevels,
             ImagesTotal = page.ImagesTotal,

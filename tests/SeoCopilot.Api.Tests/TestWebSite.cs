@@ -8,8 +8,8 @@ namespace SeoCopilot.Api.Tests;
 
 /// <summary>
 /// Crawler'i gercek HTTP uzerinden denemek icin rastgele portta ayaga kalkan kucuk statik site.
-/// Yapisi kasitli: yinelenen icerik, kirik ic link, noindex sayfa, robots ile engellenmis yol ve
-/// yalniz sitemap'ten ulasilabilen bir sayfa icerir.
+/// Yapisi kasitli: yinelenen icerik, kirik ic link, noindex sayfa, robots ile engellenmis yol,
+/// yalniz sitemap'ten ulasilabilen bir sayfa ve baska bir sayfaya yonlendiren bir URL icerir.
 /// </summary>
 public sealed class TestWebSite : IAsyncDisposable
 {
@@ -42,6 +42,9 @@ public sealed class TestWebSite : IAsyncDisposable
         "a" or "b" => Html(Duplicate()),
         "c" => Html(NoIndex()),
         "sitemap-only" => Html(Simple("Yalniz sitemap'te olan sayfa", "Bu sayfaya hicbir sayfadan link yok.")),
+        // Yonlendirme: govde "/a"ya ait. Bu URL kendi icerigine sahip degil, o yuzden
+        // icerik kurallari ve kopya tespiti burada calismamali.
+        "eski-adres" => Results.Redirect($"{origin}/a", permanent: true),
         "gizli/x" => Html(Simple("Gizli sayfa", "robots ile engellendi.")),
         "kirik" => Results.Content(Simple("Bulunamadi", "yok"), "text/html", Encoding.UTF8, 404),
         "dosyalar/katalog.pdf" => Results.Content("%PDF-1.7", "application/pdf"),
@@ -85,6 +88,7 @@ public sealed class TestWebSite : IAsyncDisposable
                 <img src="/logo.png" alt="logo">
                 <a href="/a">birinci sayfa</a>
                 <a href="/b">ikinci sayfa</a>
+                <a href="/eski-adres">tasinmis sayfa</a>
                 <a href="/kirik">kirik link</a>
                 <a href="/gizli/x">gizli alan</a>
                 <a href="/dosyalar/katalog.pdf">katalog</a>
