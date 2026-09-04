@@ -41,6 +41,9 @@ public sealed class CrawlEngine(
     /// <summary>BLOCKED_BY_ROBOTS_TXT bulgusunda saklanan azami ornek sayisi.</summary>
     private const int MaxBlockedTracked = 100;
 
+    /// <summary>Link grafiginde yonlendirme zinciri izlenirken azami atlama.</summary>
+    private const int MaxRedirectHops = 5;
+
     private static readonly TimeSpan PatternTimeout = TimeSpan.FromSeconds(1);
 
     /// <summary>Iptal istegi bu siklikta sorulur — her sayfada sormak gereksiz veritabani trafigi.</summary>
@@ -569,12 +572,23 @@ public sealed class CrawlEngine(
         return (internalCount, externalCount);
     }
 
-    /// <summary>page_links.to_page_id'yi cozer, pages.inlink_count'u hesaplar.</summary>
+    /// <summary>
+    /// page_links.to_page_id'yi cozer, pages.inlink_count'u hesaplar.
+    ///
+    /// Hedef yonlendiriyorsa zincir sonuna kadar izlenir: <c>/Products</c> → <c>/products</c>
+    /// gibi bir atlamada linkler yonlendirme satirinda birikirse gercek sayfa sifir inlink'le
+    /// kalir ve ORPHAN_PAGE gibi kurallar yanlis tetiklenir. to_url linkte ne yaziyorsa odur;
+    /// degisen yalniz hangi sayfaya sayildigi.
+    /// </summary>
     private static void ResolveLinkGraph(List<Page> pages, List<PageLink> links)
     {
         var byHash = new Dictionary<string, Page>(StringComparer.Ordinal);
+        var byUrl = new Dictionary<string, Page>(StringComparer.Ordinal);
         foreach (var page in pages)
+        {
             byHash[Convert.ToHexString(page.UrlHash)] = page;
+            byUrl[page.Url] = page;
+        }
 
         var inlinks = new Dictionary<Guid, int>();
         foreach (var link in links)
@@ -582,12 +596,29 @@ public sealed class CrawlEngine(
             if (!link.IsInternal) continue;
             if (!byHash.TryGetValue(Convert.ToHexString(UrlNormalizer.Hash(link.ToUrl)), out var target)) continue;
 
+            target = FollowRedirects(target, byUrl);
             link.ToPageId = target.Id;
             inlinks[target.Id] = inlinks.GetValueOrDefault(target.Id) + 1;
         }
 
         foreach (var page in pages)
             page.InlinkCount = inlinks.GetValueOrDefault(page.Id);
+    }
+
+    /// <summary>
+    /// Yonlendirme zincirinin sonundaki sayfa. Hedef taranmamissa ya da zincir donuyorsa
+    /// elde kalan son sayfa donulur.
+    /// </summary>
+    private static Page FollowRedirects(Page page, Dictionary<string, Page> byUrl)
+    {
+        var current = page;
+        for (var hop = 0; hop < MaxRedirectHops; hop++)
+        {
+            if (current.RedirectTo is not string next) break;
+            if (!byUrl.TryGetValue(next, out var target) || target.Id == current.Id) break;
+            current = target;
+        }
+        return current;
     }
 
     /// <summary>

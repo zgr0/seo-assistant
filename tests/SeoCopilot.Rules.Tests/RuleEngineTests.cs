@@ -224,6 +224,31 @@ public class RuleEngineTests
     }
 
     [Fact]
+    public void Invalid_json_ld_is_reported_even_when_types_were_read()
+    {
+        // Isaretleme var (SCHEMA_MISSING susmali) ama bicimi bozuk.
+        var result = RuleEngine.Default().Evaluate(HealthyPage() with { InvalidSchemaBlocks = 1 });
+
+        Assert.Equal("INVALID_STRUCTURED_DATA", Assert.Single(result.Violations).Code);
+    }
+
+    [Fact]
+    public void Redirect_to_a_non_http_target_is_critical_and_survives_the_transport_gate()
+    {
+        // Sunucu 301 donuyor — 2xx olmadigi icin icerik kurallari elenir, bu kalmali.
+        var result = RuleEngine.Default().Evaluate(HealthyPage() with
+        {
+            StatusCode = 301,
+            IsRedirect = false,
+            InvalidRedirectTarget = "javascript:;"
+        });
+
+        var violation = Assert.Single(result.Violations);
+        Assert.Equal("REDIRECT_TARGET_INVALID", violation.Code);
+        Assert.Contains("javascript:;", violation.Message);
+    }
+
+    [Fact]
     public void Server_error_and_unreachable_page_share_a_code()
     {
         Assert.Equal(

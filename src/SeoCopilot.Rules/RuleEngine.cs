@@ -11,7 +11,7 @@ public sealed class RuleEngine
 {
     /// <summary>Sayfa 2xx donmuyorsa yalniz bu kodlar raporlanir; gerisi gurultu olurdu.</summary>
     private static readonly HashSet<string> TransportCodes =
-        ["BROKEN_PAGE_4XX", "SERVER_ERROR_5XX", "REDIRECT_CHAIN"];
+        ["BROKEN_PAGE_4XX", "SERVER_ERROR_5XX", "REDIRECT_CHAIN", "REDIRECT_TARGET_INVALID"];
 
     private readonly IReadOnlyList<ISeoRule> _rules;
 
@@ -24,6 +24,7 @@ public sealed class RuleEngine
         new BrokenPage4xxRule(),
         new ServerError5xxRule(),
         new RedirectChainRule(),
+        new RedirectTargetInvalidRule(),
         new RobotsNoIndexRule(),
         new CanonicalMissingRule(),
         new CanonicalPointsElsewhereRule(),
@@ -50,6 +51,7 @@ public sealed class RuleEngine
 
         // Structured data & i18n
         new SchemaMissingRule(),
+        new InvalidStructuredDataRule(),
         new OgTagsMissingRule(),
         new LangAttrMissingRule(),
     ]);

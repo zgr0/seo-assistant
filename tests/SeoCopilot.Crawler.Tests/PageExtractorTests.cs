@@ -239,6 +239,73 @@ public class PageExtractorTests
     }
 
     [Fact]
+    public async Task Several_json_ld_roots_in_one_script_are_all_read()
+    {
+        // Gercek vaka: tek script icinde iki kok nesne arka arkaya. JSON-LD'ye gore gecersiz
+        // ama yaygin; JsonDocument.Parse patlayip butun isaretlemeyi sessizce dusuruyordu.
+        const string html = """
+            <html lang="tr"><head><script type="application/ld+json">
+            {"@context":"http://schema.org","@type":"Organization","name":"Ornek"}
+            {"@context":"http://schema.org","@type":"Person","name":"Biri"}
+            </script></head><body><h1>x</h1></body></html>
+            """;
+        var handler = new StubHttpMessageHandler().Map(PageUri.AbsoluteUri, html);
+
+        var page = await ExtractAsync(handler);
+
+        Assert.Contains("Organization", page.SchemaTypes);
+        Assert.Contains("Person", page.SchemaTypes);
+
+        // Okundu ama bicim gecersiz — ayri bulgu uretilmeli.
+        Assert.Equal(1, page.InvalidSchemaBlocks);
+    }
+
+    [Fact]
+    public async Task Well_formed_json_ld_is_not_flagged()
+    {
+        var handler = new StubHttpMessageHandler().Map(PageUri.AbsoluteUri, RichHtml);
+
+        var page = await ExtractAsync(handler);
+
+        Assert.Contains("Article", page.SchemaTypes);
+        Assert.Equal(0, page.InvalidSchemaBlocks);
+    }
+
+    [Fact]
+    public async Task Broken_json_ld_is_flagged_and_yields_no_types()
+    {
+        const string html = """
+            <html lang="tr"><head><script type="application/ld+json">
+            {"@type":"Article", bozuk
+            </script></head><body><h1>x</h1></body></html>
+            """;
+        var handler = new StubHttpMessageHandler().Map(PageUri.AbsoluteUri, html);
+
+        var page = await ExtractAsync(handler);
+
+        Assert.Empty(page.SchemaTypes);
+        Assert.Equal(1, page.InvalidSchemaBlocks);
+    }
+
+    [Fact]
+    public async Task Redirect_to_a_non_http_target_is_reported_not_swallowed()
+    {
+        // Gercek vaka: `Location: javascript:;`. Istek denenirse istisna cikar ve sayfa
+        // "getirilemedi" (status 0) gorunurdu — oysa sunucu duzgun 301 dondu.
+        var handler = new StubHttpMessageHandler()
+            .MapRedirect("https://example.com/kurumsal", "javascript:;");
+
+        var page = await ExtractAsync(handler, new Uri("https://example.com/kurumsal"));
+
+        Assert.Equal(301, page.StatusCode);
+        Assert.Equal("javascript:;", page.InvalidRedirectTarget);
+        Assert.Null(page.RedirectTo);
+
+        // Zincir orada kesilir; hedefe istek atilmaz.
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
     public async Task Relative_links_resolve_against_the_redirected_url()
     {
         // Gercek vaka: /en → /en/ atlamasi, sayfadaki linkler slash'siz goreli.

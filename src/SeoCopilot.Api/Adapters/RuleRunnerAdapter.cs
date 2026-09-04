@@ -28,6 +28,8 @@ public sealed class RuleRunnerAdapter : IRuleRunner
             CanonicalUrl = page.CanonicalUrl,
             RedirectCount = page.RedirectCount,
             IsRedirect = page.RedirectTo is not null,
+            InvalidRedirectTarget = page.InvalidRedirectTarget,
+            InvalidSchemaBlocks = page.InvalidSchemaBlocks,
             RobotsMeta = page.RobotsMeta,
             HeadingLevels = page.HeadingLevels,
             ImagesTotal = page.ImagesTotal,

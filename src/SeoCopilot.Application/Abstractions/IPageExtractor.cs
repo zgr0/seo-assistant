@@ -49,6 +49,12 @@ public sealed record ExtractedPage
     /// <summary>Sayfaya varmak icin izlenen yonlendirme sayisi — REDIRECT_CHAIN kuralini besler.</summary>
     public int RedirectCount { get; init; }
 
+    /// <summary>
+    /// Yonlendirme http/https disi bir adrese gidiyorsa (orn. <c>javascript:;</c>) izlenemez;
+    /// ham <c>Location</c> degeri burada durur. null → boyle bir durum yok.
+    /// </summary>
+    public string? InvalidRedirectTarget { get; init; }
+
     public int ResponseTimeMs { get; init; }
     public int HtmlSizeBytes { get; init; }
 
@@ -73,6 +79,12 @@ public sealed record ExtractedPage
     public IReadOnlyList<string> OgTags { get; init; } = [];
 
     public IReadOnlyList<string> SchemaTypes { get; init; } = [];
+
+    /// <summary>
+    /// Okunamayan ya da tek script icinde birden fazla kok nesne tasiyan ld+json blogu sayisi.
+    /// Sayfada isaretleme vardir ama bicimi gecersizdir.
+    /// </summary>
+    public int InvalidSchemaBlocks { get; init; }
 
     public int ImagesTotal { get; init; }
     public int ImagesNoAlt { get; init; }

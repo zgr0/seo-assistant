@@ -14,6 +14,24 @@ public sealed class SchemaMissingRule : ISeoRule
         page.SchemaTypes.Count == 0 ? "Sayfada schema.org isaretlemesi bulunamadi." : null;
 }
 
+/// <summary>
+/// Isaretleme var ama bicimi bozuk. En yaygin hali: tek &lt;script&gt; icine birden fazla kok
+/// nesnenin arka arkaya konmasi — JSON-LD'ye gore gecersiz, ayri script'lere bolunmeli.
+/// </summary>
+public sealed class InvalidStructuredDataRule : ISeoRule
+{
+    public string Code => "INVALID_STRUCTURED_DATA";
+    public RuleCategory Category => RuleCategory.StructuredData;
+    public Severity Severity => Severity.Medium;
+    public int Weight => 4;
+
+    public string? Evaluate(PageInput page) =>
+        page.InvalidSchemaBlocks > 0
+            ? $"{page.InvalidSchemaBlocks} JSON-LD blogu gecersiz bicimde " +
+              "(bozuk JSON ya da tek script icinde birden fazla kok nesne)."
+            : null;
+}
+
 /// <summary>Paylasim kartlari icin gereken temel Open Graph etiketleri.</summary>
 public sealed class OgTagsMissingRule : ISeoRule
 {

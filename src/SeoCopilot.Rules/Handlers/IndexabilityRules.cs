@@ -47,6 +47,23 @@ public sealed class RedirectChainRule : ISeoRule
             : null;
 }
 
+/// <summary>
+/// Yonlendirme http/https disi bir hedefe gidiyor (orn. <c>Location: javascript:;</c>).
+/// Sunucu yanit veriyor ama hicbir istemci hedefe gidemez; sayfa fiilen ulasilamaz.
+/// </summary>
+public sealed class RedirectTargetInvalidRule : ISeoRule
+{
+    public string Code => "REDIRECT_TARGET_INVALID";
+    public RuleCategory Category => RuleCategory.Indexability;
+    public Severity Severity => Severity.Critical;
+    public int Weight => 9;
+
+    public string? Evaluate(PageInput page) =>
+        page.InvalidRedirectTarget is string target
+            ? $"Yonlendirme HTTP olmayan bir hedefe gidiyor: {target}"
+            : null;
+}
+
 /// <summary>meta[name=robots] veya X-Robots-Tag icinde noindex arar.</summary>
 public sealed class RobotsNoIndexRule : ISeoRule
 {

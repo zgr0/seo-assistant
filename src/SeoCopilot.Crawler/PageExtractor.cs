@@ -93,7 +93,11 @@ public sealed class PageExtractor(
                 var location = response.Headers.Location;
                 if (location is null) break;
 
-                current = new Uri(current, location);
+                // Sayfa getirmedeki ile ayni kural: http disi hedef izlenmez.
+                var next = new Uri(current, location);
+                if (!IsHttp(next)) break;
+
+                current = next;
                 redirectTo = current.AbsoluteUri;
             }
 
@@ -111,6 +115,7 @@ public sealed class PageExtractor(
 
         var current = url;
         string? redirectTo = null;
+        string? invalidRedirect = null;
         var redirects = 0;
         HttpResponseMessage? response = null;
 
@@ -126,7 +131,18 @@ public sealed class PageExtractor(
                 var location = response.Headers.Location;
                 if (location is null) break;
 
-                current = new Uri(current, location);
+                var next = new Uri(current, location);
+
+                // http/https disi hedef (orn. `Location: javascript:;`) izlenemez. Istek
+                // denenirse istisna cikar ve sayfa "getirilemedi" gorunur — oysa sunucu
+                // duzgun yanit verdi, hatali olan yonlendirmenin kendisi.
+                if (!IsHttp(next))
+                {
+                    invalidRedirect = location.OriginalString;
+                    break;
+                }
+
+                current = next;
                 redirectTo = current.AbsoluteUri;
                 redirects++;
             }
@@ -147,6 +163,7 @@ public sealed class PageExtractor(
                     ContentType = contentType,
                     RedirectTo = redirectTo,
                     RedirectCount = redirects,
+                    InvalidRedirectTarget = invalidRedirect,
                     ResponseTimeMs = (int)stopwatch.ElapsedMilliseconds,
                     RobotsMeta = xRobots
                 };
@@ -314,6 +331,9 @@ public sealed class PageExtractor(
     }
 
     private static bool IsRedirect(HttpStatusCode status) => (int)status is >= 300 and < 400;
+
+    private static bool IsHttp(Uri url) =>
+        url.Scheme == Uri.UriSchemeHttp || url.Scheme == Uri.UriSchemeHttps;
 
     /// <summary>Yalniz 2xx + text/html ayristirilir; hata sayfalarindan link toplanmaz.</summary>
     private static bool IsParsableHtml(int status, string? contentType) =>

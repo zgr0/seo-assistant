@@ -28,6 +28,12 @@ public sealed record PageInput
     /// </summary>
     public bool IsRedirect { get; init; }
 
+    /// <summary>Yonlendirmenin izlenemeyen http disi hedefi (orn. <c>javascript:;</c>).</summary>
+    public string? InvalidRedirectTarget { get; init; }
+
+    /// <summary>Gecersiz bicimli ld+json blogu sayisi — isaretleme var ama okunamiyor.</summary>
+    public int InvalidSchemaBlocks { get; init; }
+
     /// <summary>meta[name=robots] + X-Robots-Tag birlesimi.</summary>
     public string? RobotsMeta { get; init; }
 

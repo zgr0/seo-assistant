@@ -209,7 +209,11 @@ public class CrawlEngineTests(PostgresFixture fixture) : IClassFixture<PostgresF
 
         // /c'ye hem /a hem /b link veriyor
         Assert.Equal(2, byPath["/c"].InlinkCount);
-        Assert.Equal(1, byPath["/a"].InlinkCount);
+
+        // "/" hem dogrudan /a'ya hem de /a'ya yonlendiren /eski-adres'e link veriyor.
+        // Yonlendirmeden gecen link degeri hedefe sayilir, yonlendirme satirinda birikmez.
+        Assert.Equal(2, byPath["/a"].InlinkCount);
+        Assert.Equal(0, byPath["/eski-adres"].InlinkCount);
         Assert.Equal(0, byPath["/"].InlinkCount);
 
         // robots ile engellenen sayfa taranmadi ama link kaydi duruyor

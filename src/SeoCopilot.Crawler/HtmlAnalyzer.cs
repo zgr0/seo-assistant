@@ -104,7 +104,7 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
         var headingLevels = ExtractHeadingLevels(doc);
         var robotsMeta = CombineRobots(doc.QuerySelector("meta[name=robots]")?.GetAttribute("content"), xRobotsTag);
         var openGraph = ExtractOpenGraph(doc);
-        var schemaTypes = ExtractSchemaTypes(doc);
+        var (schemaTypes, invalidSchemaBlocks) = ExtractSchemaTypes(doc);
         var imageUrls = ExtractImageUrls(doc, images, linkBase);
         var lang = doc.DocumentElement?.GetAttribute("lang")?.Trim();
 
@@ -130,6 +130,7 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
             OgDataJson = openGraph.Json,
             OgTags = openGraph.Tags,
             SchemaTypes = schemaTypes,
+            InvalidSchemaBlocks = invalidSchemaBlocks,
             ImagesTotal = images.Count,
             ImagesNoAlt = images.Count(i => string.IsNullOrWhiteSpace(i.GetAttribute("alt"))),
             ImageUrls = imageUrls,
@@ -286,23 +287,19 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
             : (JsonSerializer.Serialize(og), [.. og.Keys]);
     }
 
-    private static List<string> ExtractSchemaTypes(IDocument doc)
+    private static (List<string> Types, int InvalidBlocks) ExtractSchemaTypes(IDocument doc)
     {
         var types = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        var invalidBlocks = 0;
 
         foreach (var script in doc.QuerySelectorAll("script[type=\"application/ld+json\"]"))
         {
             var json = script.TextContent;
             if (string.IsNullOrWhiteSpace(json)) continue;
-            try
-            {
-                using var parsed = JsonDocument.Parse(json);
-                CollectSchemaTypes(parsed.RootElement, types, 0);
-            }
-            catch (JsonException)
-            {
-                // Bozuk JSON-LD yok sayilir.
-            }
+
+            // Tam olarak bir kok deger = gecerli. 0 = hic okunamadi, >1 = tek script icinde
+            // birden fazla kok nesne (JSON-LD'ye gore gecersiz; ayri script'lere bolunmeli).
+            if (CollectJsonLdRoots(json, types) != 1) invalidBlocks++;
         }
 
         foreach (var element in doc.QuerySelectorAll("[itemtype]"))
@@ -313,7 +310,46 @@ public sealed class HtmlAnalyzer(int maxMainTextChars)
             if (!string.IsNullOrWhiteSpace(name)) types.Add(name);
         }
 
-        return [.. types];
+        return ([.. types], invalidBlocks);
+    }
+
+    /// <summary>
+    /// Bir ld+json blogundaki kok degerleri sirayla okur ve tiplerini toplar; okunan kok
+    /// sayisini doner.
+    ///
+    /// <c>JsonDocument.Parse</c> tek kok deger bekler. Bazi siteler tek script icine birden
+    /// fazla nesneyi arka arkaya koyuyor; o durumda Parse "Additional text encountered"
+    /// firlatiyor ve butun isaretleme sessizce kayboluyordu — sayfa "schema yok" sanilirdi.
+    /// Burada hepsi okunur, gecersizlik ayrica bildirilir.
+    /// </summary>
+    private static int CollectJsonLdRoots(string json, ISet<string> sink)
+    {
+        var reader = new Utf8JsonReader(
+            Encoding.UTF8.GetBytes(json),
+            new JsonReaderOptions
+            {
+                // Bu bayrak olmadan okuyucu ilk kok degerden sonrasini reddeder.
+                AllowMultipleValues = true,
+                AllowTrailingCommas = true,
+                CommentHandling = JsonCommentHandling.Skip
+            });
+
+        var roots = 0;
+        try
+        {
+            while (reader.Read())
+            {
+                using var document = JsonDocument.ParseValue(ref reader);
+                CollectSchemaTypes(document.RootElement, sink, 0);
+                roots++;
+            }
+        }
+        catch (JsonException)
+        {
+            // Kalanini okuyamadik; o ana kadar toplananlar duruyor.
+        }
+
+        return roots;
     }
 
     private static void CollectSchemaTypes(JsonElement element, ISet<string> sink, int depth)
