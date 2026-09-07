@@ -16,6 +16,7 @@ import type {
   Dashboard,
   Issue,
   IssueFilter,
+  IssueGroup,
   Page,
   PageDetail,
   Paged,
@@ -198,6 +199,12 @@ export const cancelCrawl = (crawlId: string) =>
 
 export const listIssues = (crawlId: string, filter: IssueFilter = {}) =>
   request<Paged<Issue>>(`/crawls/${crawlId}/issues${query({ ...filter })}`)
+
+/** Kural bazli ozet — sayfalanmaz, satir sayisi kural katalogu kadardir. */
+export const listIssueGroups = (
+  crawlId: string,
+  filter: { severity?: string; minSeverity?: string; category?: string } = {},
+) => request<IssueGroup[]>(`/crawls/${crawlId}/issues/summary${query({ ...filter })}`)
 
 export const listPages = (
   crawlId: string,

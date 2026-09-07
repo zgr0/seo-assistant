@@ -2,26 +2,34 @@ import { useEffect, useRef, useState } from 'react'
 import { generateContent, getContentJob, ignoreIssue, listIssues, reopenIssue } from '../api/client.ts'
 import type { ContentJob, Issue } from '../api/types.ts'
 import { categoryLabel, shortUrl } from '../components/format.ts'
-import { Card, Empty, ErrorBox, SeverityBadge, Spinner } from '../components/ui.tsx'
+import { Card, Empty, ErrorBox, Pager, SeverityBadge, Spinner } from '../components/ui.tsx'
 import { useAction, useAsync } from '../hooks/useAsync.ts'
+
+const pageSize = 50
 
 /**
  * Bulgu detayi kural bazindadir: ayni kural bir taramada onlarca sayfada tetiklenebilir,
- * bunlarin hepsi "etkilenen sayfalar" olarak tek ekranda toplanir.
+ * bunlarin hepsi "etkilenen sayfalar" olarak sayfalanmis halde listelenir.
  */
 export function IssuePage({ crawlId, ruleCode }: { crawlId: string; ruleCode: string }) {
-  const { data, error, loading, reload } = useAsync(
-    () => listIssues(crawlId, { ruleCode, size: 200 }),
-    [crawlId, ruleCode],
-  )
+  const [pageNumber, setPageNumber] = useState(1)
+
+  // Acik adedi ayri bir sayimla gelir: yuklenen dilime bakip saymak, liste sayfalandigi
+  // icin yalnizca o sayfayi sayardi.
+  const { data, error, loading, reload } = useAsync(async () => {
+    const [affected, open] = await Promise.all([
+      listIssues(crawlId, { ruleCode, page: pageNumber, size: pageSize }),
+      listIssues(crawlId, { ruleCode, status: 'Open', size: 1 }),
+    ])
+    return { affected, openTotal: open.total }
+  }, [crawlId, ruleCode, pageNumber])
 
   if (loading && !data) return <Spinner />
   if (error) return <ErrorBox message={error} onRetry={reload} />
   if (!data) return null
-  if (data.items.length === 0) return <Empty>Bu kurala ait bulgu yok.</Empty>
+  if (data.affected.items.length === 0) return <Empty>Bu kurala ait bulgu yok.</Empty>
 
-  const first = data.items[0]
-  const openIssues = data.items.filter((i) => i.status !== 'Ignored')
+  const first = data.affected.items[0]
 
   return (
     <div className="page">
@@ -38,7 +46,7 @@ export function IssuePage({ crawlId, ruleCode }: { crawlId: string; ruleCode: st
           <p className="muted">
             <code>{ruleCode}</code>
             {first.category && ` · ${categoryLabel(first.category)}`} · agirlik {first.weight} ·{' '}
-            {data.total} bulgu ({openIssues.length} acik)
+            {data.affected.total} bulgu ({data.openTotal} acik)
           </p>
         </div>
       </header>
@@ -52,7 +60,13 @@ export function IssuePage({ crawlId, ruleCode }: { crawlId: string; ruleCode: st
 
       <Card>
         <h2 className="card-title">Etkilenen sayfalar</h2>
-        <AffectedTable issues={data.items} onChanged={reload} />
+        <AffectedTable issues={data.affected.items} onChanged={reload} />
+        <Pager
+          page={data.affected.page}
+          size={data.affected.size}
+          total={data.affected.total}
+          onChange={setPageNumber}
+        />
       </Card>
     </div>
   )

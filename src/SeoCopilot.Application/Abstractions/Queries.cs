@@ -19,3 +19,18 @@ public sealed record IssueQuery(
     string? RuleCode = null,
     IssueStatus? Status = null,
     Guid? PageId = null);
+
+/// <summary>
+/// Kural bazli bulgu ozeti — bir satir = bir kural, bir taramada onlarca sayfada tetiklenmis olsa da.
+/// <see cref="IssueQuery.Status"/>, <see cref="IssueQuery.RuleCode"/> ve <see cref="IssueQuery.PageId"/>
+/// bu sorguda uygulanmaz: acik ve yoksayilan adetler her zaman birlikte doner, boylece durum filtresi
+/// istemcide adetleri tutarsizlastirmadan degistirilebilir.
+/// </summary>
+public sealed record IssueGroup(
+    string RuleCode,
+    string RuleTitle,
+    Severity Severity,
+    RuleCategory Category,
+    int Weight,
+    int OpenCount,
+    int IgnoredCount);

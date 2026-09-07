@@ -281,6 +281,30 @@
   box-shadow: var(--shadow);
 }
 
+/* Liste ustunde duran filtre sekmeleri — kart icinde daha dar durur. */
+.tabs-inline {
+  flex-wrap: wrap;
+  width: fit-content;
+  max-width: 100%;
+  margin-bottom: 12px;
+}
+
+.tabs-inline .tab {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.tab-count {
+  margin-left: 5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-h);
+}
+
+/* Onemli siddetler her sekmede renkli kalir; notr adetler sekme durumunu izler. */
+.tab:not(.active) .tab-count:not(.tone-bad):not(.tone-warn) {
+  color: var(--muted);
+}
+
 /* --- giris ekrani --- */
 
 .auth {
@@ -490,27 +514,8 @@
 
 .score-card {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.count-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.count-list li {
-  display: flex;
   align-items: center;
-  justify-content: space-between;
-}
-
-.count-list strong {
-  color: var(--text-h);
+  justify-content: center;
 }
 
 /* --- kategori barlari --- */
@@ -715,6 +720,56 @@
 
 .cell-actions {
   white-space: nowrap;
+}
+
+.cell-count {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-h);
+}
+
+/* --- acilir kural satiri --- */
+
+.row-toggle {
+  cursor: pointer;
+}
+
+.cell-chevron {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.cell-chevron button {
+  font-size: 15px;
+  line-height: 1;
+  padding: 4px 10px;
+  color: var(--muted);
+}
+
+.group-detail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.url-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 4px 16px;
+  width: 100%;
+}
+
+.url-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
 }
 
 .inline-form-row td {

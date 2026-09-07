@@ -56,6 +56,21 @@ export interface Issue {
   sampleUrls: string[]
 }
 
+/**
+ * Bulgu listesinin kural bazli ozeti. Adetler durum filtresinden bagimsizdir: acik ve
+ * yoksayilan her zaman birlikte doner, hangisinin gosterilecegine istemci karar verir.
+ */
+export interface IssueGroup {
+  ruleCode: string
+  ruleTitle: string
+  severity: Severity
+  category: string
+  weight: number
+  openCount: number
+  ignoredCount: number
+  totalCount: number
+}
+
 export interface CrawlSummary {
   crawlId: string
   siteId: string

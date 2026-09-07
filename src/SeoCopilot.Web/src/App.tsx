@@ -53,7 +53,8 @@ export default function App() {
 
 function Routes({ route }: { route: string }) {
   const rule = match('/crawls/:crawlId/rules/:ruleCode', route)
-  if (rule) return <IssuePage crawlId={rule.crawlId} ruleCode={rule.ruleCode} />
+  // key: baska bir kurala geciste bilesen sifirdan kurulur, sayfalama durumu tasinmaz.
+  if (rule) return <IssuePage key={route} crawlId={rule.crawlId} ruleCode={rule.ruleCode} />
 
   const crawl = match('/crawls/:crawlId', route)
   if (crawl) return <CrawlPage crawlId={crawl.crawlId} />

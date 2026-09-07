@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { cancelCrawl, getCrawl, listIssues } from '../api/client.ts'
-import type { Issue } from '../api/types.ts'
+import { cancelCrawl, getCrawl, listIssueGroups, listIssues } from '../api/client.ts'
+import type { IssueGroup } from '../api/types.ts'
 import { categoryLabel, formatDate, severityLabel, shortUrl } from '../components/format.ts'
 import {
   Card,
   CategoryBars,
   Empty,
   ErrorBox,
-  Pager,
   ScoreGauge,
   SeverityBadge,
   Spinner,
@@ -26,17 +25,27 @@ const categories = [
   'Images',
   'I18n',
 ]
-const pageSize = 25
 
 /** Tarama devam ederken ozet bu araliklarla yeniden cekilir. */
 const pollMs = 3000
+
+/** Acilan satirda kac sayfa gosterilir; gerisi kural detayinda. */
+const previewSize = 8
+
+type StatusFilter = 'Open' | 'Ignored' | ''
+
+/** Satirin durum filtresine karsilik gelen adedi. */
+function countFor(group: IssueGroup, status: StatusFilter): number {
+  if (status === 'Open') return group.openCount
+  if (status === 'Ignored') return group.ignoredCount
+  return group.totalCount
+}
 
 export function CrawlPage({ crawlId }: { crawlId: string }) {
   const { data: crawl, error, loading, reload } = useAsync(() => getCrawl(crawlId), [crawlId])
   const [severity, setSeverity] = useState('')
   const [category, setCategory] = useState('')
-  const [status, setStatus] = useState('Open')
-  const [pageNumber, setPageNumber] = useState(1)
+  const [status, setStatus] = useState<StatusFilter>('Open')
   const { busy, error: actionError, run } = useAction()
 
   const running = crawl?.status === 'Queued' || crawl?.status === 'Running'
@@ -47,27 +56,43 @@ export function CrawlPage({ crawlId }: { crawlId: string }) {
     return () => clearInterval(timer)
   }, [running, reload])
 
-  const filter = useMemo(
-    () => ({ severity, category, status, page: pageNumber, size: pageSize }),
-    [severity, category, status, pageNumber],
+  // Ozetin tamami tek istekte gelir (satir sayisi kural katalogu kadar), filtreler
+  // istemcide uygulanir. Boylece sekme adetleri ile satirlar hep ayni veriden turer.
+  // pagesCrawled tarama surerken her yoklamada degistigi icin ozet de tazelenir.
+  const groups = useAsync(
+    () => listIssueGroups(crawlId),
+    [crawlId, crawl?.status, crawl?.pagesCrawled],
   )
 
-  const issues = useAsync(
-    () => listIssues(crawlId, filter),
-    [crawlId, filter, crawl?.status],
+  const visible = useMemo(
+    () =>
+      (groups.data ?? []).filter(
+        (g) =>
+          countFor(g, status) > 0 &&
+          (severity === '' || g.severity === severity) &&
+          (category === '' || g.category === category),
+      ),
+    [groups.data, severity, category, status],
   )
+
+  const tabCounts = useMemo(() => {
+    const counts: Record<string, number> = { '': 0 }
+    for (const key of severities) counts[key] = 0
+
+    for (const group of groups.data ?? []) {
+      if (category !== '' && group.category !== category) continue
+      const count = countFor(group, status)
+      counts[''] += count
+      counts[group.severity] += count
+    }
+    return counts
+  }, [groups.data, category, status])
 
   if (loading && !crawl) return <Spinner />
   if (error) return <ErrorBox message={error} onRetry={reload} />
   if (!crawl) return null
 
-  const counts = crawl.issueCounts
   const cancel = () => void run(async () => { await cancelCrawl(crawlId); reload() })
-
-  const resetFilters = (next: () => void) => {
-    next()
-    setPageNumber(1)
-  }
 
   return (
     <div className="page">
@@ -99,17 +124,6 @@ export function CrawlPage({ crawlId }: { crawlId: string }) {
       <div className="split">
         <Card className="score-card">
           <ScoreGauge score={crawl.overallScore} />
-          <ul className="count-list">
-            {severities.map((key) => {
-              const value = counts[key.toLowerCase()] ?? 0
-              return (
-                <li key={key}>
-                  <SeverityBadge severity={key} />
-                  <strong>{value}</strong>
-                </li>
-              )
-            })}
-          </ul>
         </Card>
 
         <Card>
@@ -123,20 +137,8 @@ export function CrawlPage({ crawlId }: { crawlId: string }) {
           <h2 className="card-title">Bulgular</h2>
           <div className="filters">
             <select
-              value={severity}
-              onChange={(e) => resetFilters(() => setSeverity(e.target.value))}
-              aria-label="Siddet filtresi"
-            >
-              <option value="">Tum siddetler</option>
-              {severities.map((s) => (
-                <option key={s} value={s}>
-                  {severityLabel(s)}
-                </option>
-              ))}
-            </select>
-            <select
               value={category}
-              onChange={(e) => resetFilters(() => setCategory(e.target.value))}
+              onChange={(e) => setCategory(e.target.value)}
               aria-label="Kategori filtresi"
             >
               <option value="">Tum kategoriler</option>
@@ -148,7 +150,7 @@ export function CrawlPage({ crawlId }: { crawlId: string }) {
             </select>
             <select
               value={status}
-              onChange={(e) => resetFilters(() => setStatus(e.target.value))}
+              onChange={(e) => setStatus(e.target.value as StatusFilter)}
               aria-label="Durum filtresi"
             >
               <option value="Open">Acik</option>
@@ -158,29 +160,68 @@ export function CrawlPage({ crawlId }: { crawlId: string }) {
           </div>
         </div>
 
-        {issues.loading && !issues.data && <Spinner />}
-        {issues.error && <ErrorBox message={issues.error} onRetry={issues.reload} />}
-        {issues.data && issues.data.items.length === 0 && (
-          <Empty>Bu filtreye uyan bulgu yok.</Empty>
-        )}
+        <SeverityTabs counts={tabCounts} selected={severity} onSelect={setSeverity} />
 
-        {issues.data && issues.data.items.length > 0 && (
-          <>
-            <IssueTable crawlId={crawlId} issues={issues.data.items} />
-            <Pager
-              page={issues.data.page}
-              size={issues.data.size}
-              total={issues.data.total}
-              onChange={setPageNumber}
-            />
-          </>
+        {groups.loading && !groups.data && <Spinner />}
+        {groups.error && <ErrorBox message={groups.error} onRetry={groups.reload} />}
+        {groups.data && visible.length === 0 && <Empty>Bu filtreye uyan bulgu yok.</Empty>}
+        {visible.length > 0 && (
+          <IssueGroupTable crawlId={crawlId} groups={visible} status={status} />
         )}
       </Card>
     </div>
   )
 }
 
-function IssueTable({ crawlId, issues }: { crawlId: string; issues: Issue[] }) {
+/** Siddet sekmeleri; adetler satirlarla ayni ozetten turedigi icin filtreyle tutarli kalir. */
+function SeverityTabs({
+  counts,
+  selected,
+  onSelect,
+}: {
+  counts: Record<string, number>
+  selected: string
+  onSelect: (severity: string) => void
+}) {
+  const tone: Record<string, string> = { Critical: 'tone-bad', High: 'tone-warn' }
+
+  return (
+    <div className="tabs tabs-inline">
+      <button
+        type="button"
+        className={`tab ${selected === '' ? 'active' : ''}`}
+        onClick={() => onSelect('')}
+      >
+        Tumu <strong className="tab-count">{counts[''] ?? 0}</strong>
+      </button>
+      {severities.map((key) => (
+        <button
+          key={key}
+          type="button"
+          className={`tab ${selected === key ? 'active' : ''}`}
+          onClick={() => onSelect(key)}
+        >
+          {severityLabel(key)}{' '}
+          <strong className={`tab-count ${tone[key] ?? ''}`}>{counts[key] ?? 0}</strong>
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Satir = kural. Bir kural bir taramada onlarca sayfada tetiklenebilir; satir acilinca
+ * etkilenen sayfalarin ilk {@link previewSize} tanesi yerinde listelenir.
+ */
+function IssueGroupTable({
+  crawlId,
+  groups,
+  status,
+}: {
+  crawlId: string
+  groups: IssueGroup[]
+  status: StatusFilter
+}) {
   return (
     <div className="table-wrap">
       <table className="table">
@@ -189,36 +230,18 @@ function IssueTable({ crawlId, issues }: { crawlId: string; issues: Issue[] }) {
             <th>Siddet</th>
             <th>Kural</th>
             <th>Kategori</th>
-            <th>Sayfa</th>
-            <th>Kanit</th>
+            <th>Bulgu</th>
             <th />
           </tr>
         </thead>
         <tbody>
-          {issues.map((issue) => (
-            <tr key={issue.id} className={issue.status === 'Ignored' ? 'muted-row' : undefined}>
-              <td>
-                <SeverityBadge severity={issue.severity} />
-              </td>
-              <td>
-                <a href={`#/crawls/${crawlId}/rules/${issue.ruleCode}`}>
-                  {issue.ruleTitle ?? issue.ruleCode}
-                </a>
-                <div className="cell-sub">{issue.ruleCode}</div>
-              </td>
-              <td>{issue.category ? categoryLabel(issue.category) : '—'}</td>
-              <td className="cell-url">
-                {issue.pageId ? (
-                  <a href={`#/pages/${issue.pageId}`}>{shortUrl(issue.pageUrl)}</a>
-                ) : (
-                  <span className="muted">site geneli</span>
-                )}
-              </td>
-              <td className="cell-evidence">{issue.found ?? '—'}</td>
-              <td>
-                {issue.status === 'Ignored' && <span className="badge">Yoksayildi</span>}
-              </td>
-            </tr>
+          {groups.map((group) => (
+            <IssueGroupRow
+              key={group.ruleCode}
+              crawlId={crawlId}
+              group={group}
+              status={status}
+            />
           ))}
         </tbody>
       </table>
@@ -226,3 +249,101 @@ function IssueTable({ crawlId, issues }: { crawlId: string; issues: Issue[] }) {
   )
 }
 
+function IssueGroupRow({
+  crawlId,
+  group,
+  status,
+}: {
+  crawlId: string
+  group: IssueGroup
+  status: StatusFilter
+}) {
+  const [open, setOpen] = useState(false)
+  const toggle = () => setOpen((v) => !v)
+
+  return (
+    <>
+      <tr className="row-toggle" onClick={toggle}>
+        <td>
+          <SeverityBadge severity={group.severity} />
+        </td>
+        <td>
+          {group.ruleTitle}
+          <div className="cell-sub">{group.ruleCode}</div>
+        </td>
+        <td>{categoryLabel(group.category)}</td>
+        <td className="cell-count">
+          {countFor(group, status)}
+          {status === 'Open' && group.ignoredCount > 0 && (
+            <div className="cell-sub">{group.ignoredCount} yoksayildi</div>
+          )}
+        </td>
+        <td className="cell-chevron">
+          <button
+            type="button"
+            className="btn btn-ghost btn-sm"
+            aria-expanded={open}
+            aria-label={`${group.ruleTitle} etkilenen sayfalar`}
+            onClick={(e) => {
+              // Satirin kendi tiklamasi da acip kapatiyor; ikisi ust uste binmesin.
+              e.stopPropagation()
+              toggle()
+            }}
+          >
+            {open ? '▾' : '▸'}
+          </button>
+        </td>
+      </tr>
+
+      {open && (
+        <tr className="inline-form-row">
+          <td colSpan={5}>
+            <AffectedPreview crawlId={crawlId} ruleCode={group.ruleCode} status={status} />
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
+/** Yalnizca acik satir icin monte edilir; kapali satirlar istek uretmez. */
+function AffectedPreview({
+  crawlId,
+  ruleCode,
+  status,
+}: {
+  crawlId: string
+  ruleCode: string
+  status: StatusFilter
+}) {
+  const { data, error, loading, reload } = useAsync(
+    () => listIssues(crawlId, { ruleCode, status, size: previewSize }),
+    [crawlId, ruleCode, status],
+  )
+
+  if (loading && !data) return <Spinner />
+  if (error) return <ErrorBox message={error} onRetry={reload} />
+  if (!data) return null
+
+  const rest = data.total - data.items.length
+
+  return (
+    <div className="group-detail">
+      <ul className="url-list">
+        {data.items.map((issue) => (
+          <li key={issue.id}>
+            {issue.pageId ? (
+              <a href={`#/pages/${issue.pageId}`}>{shortUrl(issue.pageUrl)}</a>
+            ) : (
+              <span className="muted">site geneli</span>
+            )}
+            {issue.status === 'Ignored' && <span className="badge">Yoksayildi</span>}
+          </li>
+        ))}
+      </ul>
+      <a className="btn btn-ghost btn-sm" href={`#/crawls/${crawlId}/rules/${ruleCode}`}>
+        {rest > 0 ? `+${rest} sayfa daha · kural detayi` : 'Kural detayi ve duzeltme onerisi'}
+      </a>
+    </div>
+  )
+}

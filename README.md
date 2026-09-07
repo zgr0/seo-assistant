@@ -140,6 +140,7 @@ Tum `/api/sites` ve `/api/crawls` uclari token'daki `tenant_id` ile sinirlanir â
 | `POST /api/crawls/{id}/cancel` | Iptal isaretini yazar; calisan worker sonraki derinlik gecisinde durur. Bitmis tarama icin `400` |
 | `GET /api/crawls/{id}/pages` | Filtreli + sayfalanmis: `url`, `statusCode`, `minStatusCode`, `maxStatusCode`, `depth`, `hasIssues`, `page`, `size` |
 | `GET /api/crawls/{id}/issues` | Filtreli + sayfalanmis: `severity`, `minSeverity`, `category`, `ruleCode`, `status`, `pageId`, `page`, `size` |
+| `GET /api/crawls/{id}/issues/summary` | Kural bazli ozet â€” bir satir = bir kural, `openCount`/`ignoredCount`/`totalCount` ile. Filtreler: `severity`, `minSeverity`, `category`. Sayfalanmaz |
 | `GET /api/crawls/{id}/compare/{prevId}` | Iki tarama farki: skor/sayfa/onem deltasi, yeni ve cozulen bulgular |
 | `GET /api/pages/{id}` | Sayfa detayi: kolonlar + `ogData`, `mainText` (ilk 20 000 karakter) ve sayfanin bulgulari |
 | `POST /api/issues/{id}/ignore` | `{reason, applyToSite}` â†’ bulguyu kapatir, `issue_ignores` yazar. `applyToSite` ayni kuralin tum acik bulgularini da kapatir |
@@ -147,6 +148,10 @@ Tum `/api/sites` ve `/api/crawls` uclari token'daki `tenant_id` ile sinirlanir â
 
 Sayfalama zarfi her yerde ayni: `{ items, total, page, size }`; `size` en fazla 200.
 Enum filtreleri hem `structured_data` hem `StructuredData` bicimini kabul eder; tanimsiz deger `400` doner.
+
+`issues/summary` bir dizi doner, zarf yok: satir sayisi kural katalogu ile sinirli oldugu icin sayfalanmaz.
+`status` filtresi kabul etmez â€” acik ve yoksayilan adetleri her zaman birlikte tasir, boylece durum secimi
+istemcide adetleri tutarsizlastirmadan degistirilebilir.
 
 ### Tarama motoru
 

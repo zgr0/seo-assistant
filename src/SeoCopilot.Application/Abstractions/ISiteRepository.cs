@@ -72,6 +72,12 @@ public interface ISiteRepository
     Task<(IReadOnlyList<Issue> Items, int Total)> QueryIssuesAsync(
         Guid crawlId, IssueQuery query, int skip, int take, CancellationToken ct = default);
 
+    /// <summary>
+    /// Kural bazli ozet; onem sirasina gore. Sayfalanmaz — satir sayisi kural katalogu kadardir.
+    /// </summary>
+    Task<IReadOnlyList<IssueGroup>> GroupIssuesAsync(
+        Guid crawlId, IssueQuery query, CancellationToken ct = default);
+
     /// <summary>Crawl'in tum bulgulari — kiyaslama icin (sayfa URL'leri dahil).</summary>
     Task<IReadOnlyList<Issue>> ListIssuesAsync(Guid crawlId, CancellationToken ct = default);
 

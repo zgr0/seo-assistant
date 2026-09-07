@@ -43,6 +43,19 @@ public static class CrawlEndpoints
             return result is null ? Results.NotFound() : Results.Ok(result);
         });
 
+        group.MapGet("/{crawlId:guid}/issues/summary", async (
+            Guid crawlId, ClaimsPrincipal user, CrawlOrchestrator orchestrator,
+            string? severity, string? minSeverity, string? category, CancellationToken ct) =>
+        {
+            var query = new IssueQuery(
+                EnumText.ParseOptional<Severity>(severity, "severity"),
+                EnumText.ParseOptional<Severity>(minSeverity, "minSeverity"),
+                EnumText.ParseOptional<RuleCategory>(category, "category"));
+
+            var result = await orchestrator.GetIssueGroupsAsync(crawlId, user.TenantId(), query, ct);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        });
+
         group.MapGet("/{crawlId:guid}/issues", async (
             Guid crawlId, ClaimsPrincipal user, CrawlOrchestrator orchestrator,
             string? severity, string? minSeverity, string? category, string? ruleCode,

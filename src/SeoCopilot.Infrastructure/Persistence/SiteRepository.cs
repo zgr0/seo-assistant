@@ -196,6 +196,41 @@ public sealed class SiteRepository(SeoCopilotDbContext db) : ISiteRepository
         return (items, total);
     }
 
+    public async Task<IReadOnlyList<IssueGroup>> GroupIssuesAsync(
+        Guid crawlId, IssueQuery query, CancellationToken ct = default)
+    {
+        var q = db.Issues.Where(i => i.CrawlId == crawlId);
+
+        if (query.Severity is Severity severity) q = q.Where(i => i.Severity == severity);
+        if (query.MinSeverity is Severity minSeverity)
+        {
+            var allowed = AtLeast(minSeverity);
+            q = q.Where(i => allowed.Contains(i.Severity));
+        }
+        if (query.Category is RuleCategory category) q = q.Where(i => i.Rule!.Category == category);
+
+        // Onem ve agirlik kuraldan kopyalanir, yani kural basina sabittir; anahtara alinmalari
+        // enum uzerinde aggregate cevirmek zorunda kalmadan tek satir uretir.
+        var groups = await q
+            .GroupBy(i => new { i.RuleCode, i.Rule!.TitleTr, i.Rule!.Category, i.Severity, i.Weight })
+            .Select(g => new IssueGroup(
+                g.Key.RuleCode,
+                g.Key.TitleTr,
+                g.Key.Severity,
+                g.Key.Category,
+                g.Key.Weight,
+                g.Sum(i => i.Status == IssueStatus.Open ? 1 : 0),
+                g.Sum(i => i.Status == IssueStatus.Ignored ? 1 : 0)))
+            .ToListAsync(ct);
+
+        // Siralama bellekte: enum'lar veritabaninda metin saklandigi icin SQL siralamasi
+        // alfabetik olurdu, ustelik satir sayisi kural katalogu kadar (~35).
+        return [.. groups
+            .OrderByDescending(g => g.Severity)
+            .ThenByDescending(g => g.OpenCount + g.IgnoredCount)
+            .ThenBy(g => g.RuleCode, StringComparer.Ordinal)];
+    }
+
     public async Task<IReadOnlyList<Issue>> ListIssuesAsync(Guid crawlId, CancellationToken ct = default) =>
         await db.Issues
             .Include(i => i.Rule)

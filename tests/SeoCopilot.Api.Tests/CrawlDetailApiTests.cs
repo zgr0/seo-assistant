@@ -116,7 +116,7 @@ public class CrawlDetailApiTests(PostgresFixture fixture) : IClassFixture<Postgr
 
         var body = await client.GetFromJsonAsync<JsonElement>($"/api/crawls/{crawlId}/issues?size=200");
         var order = body.GetProperty("items").EnumerateArray()
-            .Select(i => Rank(i.GetProperty("severity").GetString()!))
+            .Select(i => SeverityRank(i.GetProperty("severity").GetString()!))
             .ToList();
 
         // severity kolonu metin oldugu icin alfabetik siralama 'medium'u basa alirdi.
@@ -128,16 +128,66 @@ public class CrawlDetailApiTests(PostgresFixture fixture) : IClassFixture<Postgr
         Assert.True(high.GetProperty("total").GetInt32() > 0);
         Assert.All(
             high.GetProperty("items").EnumerateArray(),
-            i => Assert.True(Rank(i.GetProperty("severity").GetString()!) >= 3));
+            i => Assert.True(SeverityRank(i.GetProperty("severity").GetString()!) >= 3));
+    }
 
-        static int Rank(string severity) => severity switch
-        {
-            "Critical" => 4,
-            "High" => 3,
-            "Medium" => 2,
-            "Low" => 1,
-            _ => 0,
-        };
+    [Fact]
+    public async Task Issue_summary_returns_one_row_per_rule_sorted_by_severity()
+    {
+        await using var webSite = await TestWebSite.StartAsync();
+        await using var factory = fixture.CreateFactory();
+        var (client, crawlId) = await CrawlAsync(factory, webSite, "issues-summary@example.com");
+
+        var summary = await client.GetFromJsonAsync<JsonElement>($"/api/crawls/{crawlId}/issues/summary");
+        var rows = summary.EnumerateArray().ToList();
+
+        Assert.NotEmpty(rows);
+        var codes = rows.Select(r => r.GetProperty("ruleCode").GetString()!).ToList();
+        Assert.Equal(codes.Count, codes.Distinct(StringComparer.Ordinal).Count());
+
+        var ranks = rows.Select(r => SeverityRank(r.GetProperty("severity").GetString()!)).ToList();
+        Assert.Equal(ranks, ranks.OrderByDescending(r => r));
+
+        Assert.All(rows, r => Assert.Equal(
+            r.GetProperty("openCount").GetInt32() + r.GetProperty("ignoredCount").GetInt32(),
+            r.GetProperty("totalCount").GetInt32()));
+
+        // Ozetteki adet, ayni kuralin sayfalanmis listesindeki toplamla ayni olmali.
+        var first = rows[0];
+        var detail = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/crawls/{crawlId}/issues?ruleCode={first.GetProperty("ruleCode").GetString()}&size=200");
+        Assert.Equal(first.GetProperty("totalCount").GetInt32(), detail.GetProperty("total").GetInt32());
+
+        var meta = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/crawls/{crawlId}/issues/summary?category=meta");
+        Assert.All(meta.EnumerateArray(), r => Assert.Equal("Meta", r.GetProperty("category").GetString()));
+    }
+
+    [Fact]
+    public async Task Issue_summary_counts_open_and_ignored_separately()
+    {
+        await using var webSite = await TestWebSite.StartAsync();
+        await using var factory = fixture.CreateFactory();
+        var (client, crawlId) = await CrawlAsync(factory, webSite, "summary-ignore@example.com");
+
+        var before = await client.GetFromJsonAsync<JsonElement>($"/api/crawls/{crawlId}/issues/summary");
+        var target = before.EnumerateArray().First(r => r.GetProperty("openCount").GetInt32() > 0);
+        var ruleCode = target.GetProperty("ruleCode").GetString()!;
+        var total = target.GetProperty("totalCount").GetInt32();
+
+        var issues = await client.GetFromJsonAsync<JsonElement>(
+            $"/api/crawls/{crawlId}/issues?ruleCode={ruleCode}&size=200");
+        var issueId = issues.GetProperty("items")[0].GetProperty("id").GetInt64();
+        await client.PostAsJsonAsync(
+            $"/api/issues/{issueId}/ignore", new { reason = "Bilincli tercih", applyToSite = true });
+
+        var after = await client.GetFromJsonAsync<JsonElement>($"/api/crawls/{crawlId}/issues/summary");
+        var row = after.EnumerateArray().First(r => r.GetProperty("ruleCode").GetString() == ruleCode);
+
+        // Kural susturuldu: satir kaybolmaz, adet acik'tan yoksayilan'a gecer.
+        Assert.Equal(0, row.GetProperty("openCount").GetInt32());
+        Assert.Equal(total, row.GetProperty("ignoredCount").GetInt32());
+        Assert.Equal(total, row.GetProperty("totalCount").GetInt32());
     }
 
     [Fact]
@@ -255,6 +305,16 @@ public class CrawlDetailApiTests(PostgresFixture fixture) : IClassFixture<Postgr
     }
 
     // --- yardimcilar ---
+
+    /// <summary>Onem enum'i metin saklandigi icin siralama testleri sayisal dereceye cevirir.</summary>
+    private static int SeverityRank(string severity) => severity switch
+    {
+        "Critical" => 4,
+        "High" => 3,
+        "Medium" => 2,
+        "Low" => 1,
+        _ => 0,
+    };
 
     private static async Task<(HttpClient Client, Guid CrawlId)> CrawlAsync(
         WebApplicationFactory<Program> factory, TestWebSite webSite, string email)

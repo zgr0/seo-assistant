@@ -1,3 +1,4 @@
+using SeoCopilot.Application.Abstractions;
 using SeoCopilot.Domain.Entities.Crawling;
 
 namespace SeoCopilot.Application.Dtos;
@@ -105,6 +106,31 @@ public record IssueDto(
         i.Evidence.Found,
         i.Evidence.Expected,
         i.Evidence.SampleUrls);
+}
+
+/// <summary>
+/// Bulgu listesinin kural bazli ozeti — bir satir = bir kural, kac sayfada tetiklendigi ile.
+/// Etkilenen sayfalarin kendisi icin /crawls/{id}/issues?ruleCode=...
+/// </summary>
+public record IssueGroupDto(
+    string RuleCode,
+    string RuleTitle,
+    string Severity,
+    string Category,
+    int Weight,
+    int OpenCount,
+    int IgnoredCount,
+    int TotalCount)
+{
+    public static IssueGroupDto From(IssueGroup g) => new(
+        g.RuleCode,
+        g.RuleTitle,
+        g.Severity.ToString(),
+        g.Category.ToString(),
+        g.Weight,
+        g.OpenCount,
+        g.IgnoredCount,
+        g.OpenCount + g.IgnoredCount);
 }
 
 /// <summary>Iki crawl arasindaki fark — FE'nin "onceki taramaya gore" panosu.</summary>

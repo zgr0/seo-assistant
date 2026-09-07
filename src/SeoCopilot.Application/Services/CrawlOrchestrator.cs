@@ -148,6 +148,20 @@ public sealed class CrawlOrchestrator(
         return new PagedResult<IssueDto>([.. items.Select(IssueDto.From)], total, pageNumber, pageSize);
     }
 
+    /// <summary>
+    /// Bulgu listesinin kural bazli ozeti. Sayfalama yok: bir taramanin uretebilecegi satir
+    /// sayisi kural katalogu ile sinirlidir, binlerce bulgu onlarca satira iner.
+    /// </summary>
+    public async Task<IReadOnlyList<IssueGroupDto>?> GetIssueGroupsAsync(
+        Guid crawlId, Guid tenantId, IssueQuery query, CancellationToken ct = default)
+    {
+        var crawl = await repository.GetCrawlForTenantAsync(crawlId, tenantId, ct);
+        if (crawl is null) return null;
+
+        var groups = await repository.GroupIssuesAsync(crawlId, query, ct);
+        return [.. groups.Select(IssueGroupDto.From)];
+    }
+
     public async Task<PageDetailDto?> GetPageAsync(Guid pageId, Guid tenantId, CancellationToken ct = default)
     {
         var page = await repository.GetPageForTenantAsync(pageId, tenantId, ct);
