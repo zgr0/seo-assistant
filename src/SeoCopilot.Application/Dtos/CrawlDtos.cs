@@ -86,7 +86,11 @@ public record IssueDto(
     string? Category,
     string? RuleTitle,
     string? RuleDescription,
+    /// <summary>Kuralin mesru istisnalari — Yoksay eyleminin yaninda gosterilir.</summary>
+    string? WhenToIgnore,
     string? HowToFix,
+    /// <summary>Kuralin birincil kaynagi (Search Central, web.dev...); seed'ten gelir.</summary>
+    string? DocUrl,
     string? Found,
     string? Expected,
     IReadOnlyList<string> SampleUrls)
@@ -102,7 +106,9 @@ public record IssueDto(
         i.Rule?.Category.ToString(),
         i.Rule?.TitleTr,
         i.Rule?.DescriptionTr,
+        i.Rule?.WhenToIgnoreTr,
         i.Rule?.HowToFixTr,
+        i.Rule?.DocUrl,
         i.Evidence.Found,
         i.Evidence.Expected,
         i.Evidence.SampleUrls);

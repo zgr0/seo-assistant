@@ -120,6 +120,22 @@
   margin-bottom: 12px;
 }
 
+/*
+ * Kural katalogundan gelen uzun metinler. HowToFixTr numarali adimlari satir sonuyla
+ * ayirir; pre-line olmadan hepsi tek paragrafa yapisir.
+ */
+.prose {
+  white-space: pre-line;
+  max-width: 72ch;
+  line-height: 1.7;
+}
+
+/* Kuralin birincil kaynagina giden dis baglanti — prose bloklarinin altinda. */
+.doc-link {
+  margin-top: 12px;
+  font-size: 12px;
+}
+
 .split {
   display: grid;
   grid-template-columns: minmax(280px, 360px) 1fr;

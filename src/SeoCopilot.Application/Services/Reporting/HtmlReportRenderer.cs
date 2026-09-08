@@ -35,6 +35,7 @@ public static class HtmlReportRenderer
               .critical{color:#b00020;font-weight:600} .high{color:#c25e00;font-weight:600}
               .medium{color:#8a6d00} .low{color:#555}
               .url{word-break:break-all;color:#0645ad}
+              .fix{white-space:pre-line;min-width:280px}
             </style></head><body>
             """);
 
@@ -88,7 +89,7 @@ public static class HtmlReportRenderer
                 $"<tr><td>{H(first.Rule?.TitleTr ?? first.RuleCode)}<br><small>{H(first.RuleCode)}</small></td>"
                 + $"<td class=\"{Severity(first)}\">{Severity(first)}</td>"
                 + $"<td>{group.Count()}</td>"
-                + $"<td>{H(first.Rule?.HowToFixTr)}</td></tr>");
+                + $"<td class=\"fix\">{H(first.Rule?.HowToFixTr)}{DocLink(first.Rule?.DocUrl)}</td></tr>");
         }
         sb.AppendLine("</table>");
 
@@ -117,6 +118,11 @@ public static class HtmlReportRenderer
         $"<div class=\"card\">{H(label)}<b>{H(value)}</b></div>";
 
     private static string Severity(Issue issue) => issue.Severity.ToString().ToLowerInvariant();
+
+    /// <summary>Kuralin birincil kaynagi; seed'te tanimsizsa hicbir sey basilmaz.</summary>
+    private static string DocLink(string? docUrl) => string.IsNullOrWhiteSpace(docUrl)
+        ? string.Empty
+        : $"<br><small><a class=\"url\" href=\"{H(docUrl)}\">Kaynak dokuman</a></small>";
 
     private static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 }

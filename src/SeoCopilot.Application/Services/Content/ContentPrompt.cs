@@ -135,7 +135,14 @@ public static class ContentPrompt
         ContentJobType.BlogOutline =>
             "Blog yazisi icin plan cikar. H2/H3 basliklari ve her basligin altinda 1 cumlelik not ver.",
         ContentJobType.FixAdvice =>
-            "Verilen SEO bulgusu icin uygulanabilir duzeltme adimlarini yaz. Numarali, kisa ve somut.",
+            "Verilen SEO bulgusunu bu sayfaya ozel hale getir. Govdeyi uc bolum halinde yaz:\n"
+            + "1. Olasi kok neden — kanit alanindaki degere ve sayfa baglamina dayanarak bu sayfada "
+            + "sorunun neden ciktigini soyle.\n"
+            + "2. Duzeltme adimlari — numarali ve somut. baseAdvice alanindaki genel metni "
+            + "tekrarlama; onu bu sayfanin verisiyle ozellestir.\n"
+            + "3. Nasil dogrularim — degisiklikten sonra bakilacak tek bir somut kontrol.\n"
+            + "Erisemedigin bilgiyi uydurma; emin olmadigin yerde neyin kontrol edilmesi gerektigini "
+            + "yaz. whenToIgnore alanindaki durum bu sayfa icin gecerliyse bunu bastan belirt.",
         ContentJobType.SocialPost =>
             "Platforma uygun tek bir sosyal medya gonderisi yaz. Ilk satir kanca olsun.",
         ContentJobType.SocialBatch =>

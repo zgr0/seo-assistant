@@ -31,6 +31,16 @@ export function severityLabel(severity: string): string {
   return severityLabels[severity] ?? severity
 }
 
+/**
+ * Kural agirliginin (1-10) skora etkisini duz dille anlatir — ham sayi tek basina
+ * kullaniciya bir sey soylemiyor.
+ */
+export function weightNote(weight: number): string {
+  if (weight >= 8) return 'skoru en cok dusuren gruptan, oncelikle bunu kapat'
+  if (weight >= 5) return 'skora orta duzeyde etkisi var'
+  return 'skora etkisi sinirli, sirasi geldiginde ele al'
+}
+
 const categoryLabels: Record<string, string> = {
   indexability: 'Dizinlenebilirlik',
   meta: 'Meta',
@@ -77,6 +87,15 @@ export function timeAgo(value: string | null): string {
   const days = Math.round(hours / 24)
   if (days < 30) return `${days} gun once`
   return formatDate(value)
+}
+
+/** Dis baglantilarda kullanicinin nereye gidecegini gormesi icin yalniz alan adi. */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return url
+  }
 }
 
 /** Tablolarda tam URL yerine yol gosterilir. */

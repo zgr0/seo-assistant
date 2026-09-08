@@ -50,7 +50,9 @@ export interface Issue {
   category: string | null
   ruleTitle: string | null
   ruleDescription: string | null
+  whenToIgnore: string | null
   howToFix: string | null
+  docUrl: string | null
   found: string | null
   expected: string | null
   sampleUrls: string[]

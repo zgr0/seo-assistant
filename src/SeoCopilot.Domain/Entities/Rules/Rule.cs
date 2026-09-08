@@ -16,6 +16,13 @@ public class Rule
 
     public string TitleTr { get; set; } = string.Empty;
     public string DescriptionTr { get; set; } = string.Empty;
+
+    /// <summary>
+    /// "Bu bulguyu yoksaymali miyim?" sorusunun cevabi — mesru istisnalar ya da acikca
+    /// istisnasi olmadigi bilgisi. Bulgu detayinda Yoksay eyleminin yaninda gosterilir.
+    /// </summary>
+    public string? WhenToIgnoreTr { get; set; }
+
     public string HowToFixTr { get; set; } = string.Empty;
     public string? DocUrl { get; set; }
     public bool IsActive { get; set; } = true;

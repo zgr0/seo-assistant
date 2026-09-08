@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { generateContent, getContentJob, ignoreIssue, listIssues, reopenIssue } from '../api/client.ts'
 import type { ContentJob, Issue } from '../api/types.ts'
-import { categoryLabel, shortUrl } from '../components/format.ts'
+import { categoryLabel, hostOf, shortUrl, weightNote } from '../components/format.ts'
 import { Card, Empty, ErrorBox, Pager, SeverityBadge, Spinner } from '../components/ui.tsx'
 import { useAction, useAsync } from '../hooks/useAsync.ts'
 
@@ -45,18 +45,29 @@ export function IssuePage({ crawlId, ruleCode }: { crawlId: string; ruleCode: st
           </h1>
           <p className="muted">
             <code>{ruleCode}</code>
-            {first.category && ` · ${categoryLabel(first.category)}`} · agirlik {first.weight} ·{' '}
+            {first.category && ` · ${categoryLabel(first.category)}`} ·{' '}
             {data.affected.total} bulgu ({data.openTotal} acik)
+          </p>
+          <p className="muted small">
+            Agirlik {first.weight}/10 — {weightNote(first.weight)}
           </p>
         </div>
       </header>
 
       <Card>
         <h2 className="card-title">Kural ne diyor?</h2>
-        <p>{first.ruleDescription ?? 'Bu kural icin aciklama tanimlanmamis.'}</p>
+        <p className="prose">{first.ruleDescription ?? 'Bu kural icin aciklama tanimlanmamis.'}</p>
+        <DocLink url={first.docUrl} />
       </Card>
 
       <FixAdvice issue={first} />
+
+      {first.whenToIgnore && (
+        <Card>
+          <h2 className="card-title">Yoksaymali miyim?</h2>
+          <p className="prose">{first.whenToIgnore}</p>
+        </Card>
+      )}
 
       <Card>
         <h2 className="card-title">Etkilenen sayfalar</h2>
@@ -69,6 +80,20 @@ export function IssuePage({ crawlId, ruleCode }: { crawlId: string; ruleCode: st
         />
       </Card>
     </div>
+  )
+}
+
+/** Kural katalogundaki birincil kaynak. Seed'te tanimsizsa hicbir sey basilmaz. */
+function DocLink({ url }: { url: string | null }) {
+  if (!url) return null
+
+  return (
+    <p className="doc-link muted">
+      Kaynak:{' '}
+      <a href={url} target="_blank" rel="noreferrer">
+        {hostOf(url)} ↗
+      </a>
+    </p>
   )
 }
 
@@ -228,7 +253,10 @@ function FixAdvice({ issue }: { issue: Issue }) {
           evidence: issue.found,
           expected: issue.expected,
           sampleUrls: issue.sampleUrls.slice(0, 5),
+          ruleDescription: issue.ruleDescription,
+          whenToIgnore: issue.whenToIgnore,
           baseAdvice: issue.howToFix,
+          docUrl: issue.docUrl,
         },
         variantCount: 1,
       })
@@ -246,7 +274,7 @@ function FixAdvice({ issue }: { issue: Issue }) {
         </button>
       </div>
 
-      <p>{issue.howToFix ?? 'Bu kural icin duzeltme notu tanimlanmamis.'}</p>
+      <p className="prose">{issue.howToFix ?? 'Bu kural icin duzeltme notu tanimlanmamis.'}</p>
 
       {error && <p className="form-error">{error}</p>}
 
