@@ -36,9 +36,9 @@ export function severityLabel(severity: string): string {
  * kullaniciya bir sey soylemiyor.
  */
 export function weightNote(weight: number): string {
-  if (weight >= 8) return 'skoru en çok düşüren gruptan, öncelikle bunu kapat'
+  if (weight >= 8) return 'skoru en çok düşüren gruptan, önceliği buna verin'
   if (weight >= 5) return 'skora orta düzeyde etkisi var'
-  return 'skora etkisi sınırlı, sırası geldiğinde ele al'
+  return 'skora etkisi sınırlı, sırası geldiğinde ele alın'
 }
 
 const categoryLabels: Record<string, string> = {

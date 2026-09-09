@@ -89,6 +89,8 @@ public record IssueDto(
     /// <summary>Kuralin mesru istisnalari — Yoksay eyleminin yaninda gosterilir.</summary>
     string? WhenToIgnore,
     string? HowToFix,
+    /// <summary>Etkilenen sayfalar listesi icin triyaj notu — listenin ustunde gosterilir.</summary>
+    string? AffectedNote,
     /// <summary>Kuralin birincil kaynagi (Search Central, web.dev...); seed'ten gelir.</summary>
     string? DocUrl,
     string? Found,
@@ -108,6 +110,7 @@ public record IssueDto(
         i.Rule?.DescriptionTr,
         i.Rule?.WhenToIgnoreTr,
         i.Rule?.HowToFixTr,
+        i.Rule?.AffectedNoteTr,
         i.Rule?.DocUrl,
         i.Evidence.Found,
         i.Evidence.Expected,

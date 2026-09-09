@@ -24,6 +24,13 @@ public class Rule
     public string? WhenToIgnoreTr { get; set; }
 
     public string HowToFixTr { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Etkilenen sayfalar listesinin nasil okunacagi: hangi satirlar oncelikli, satirlar tek
+    /// bir sablondan mi geliyor, tek tek mi toplu mu duzeltilir. Listenin ustunde gosterilir.
+    /// </summary>
+    public string? AffectedNoteTr { get; set; }
+
     public string? DocUrl { get; set; }
     public bool IsActive { get; set; } = true;
 

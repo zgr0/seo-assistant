@@ -89,7 +89,8 @@ public static class HtmlReportRenderer
                 $"<tr><td>{H(first.Rule?.TitleTr ?? first.RuleCode)}<br><small>{H(first.RuleCode)}</small></td>"
                 + $"<td class=\"{Severity(first)}\">{Severity(first)}</td>"
                 + $"<td>{group.Count()}</td>"
-                + $"<td class=\"fix\">{H(first.Rule?.HowToFixTr)}{DocLink(first.Rule?.DocUrl)}</td></tr>");
+                + $"<td class=\"fix\">{H(FirstSteps(first.Rule?.HowToFixTr))}"
+                + $"{DocLink(first.Rule?.DocUrl)}</td></tr>");
         }
         sb.AppendLine("</table>");
 
@@ -118,6 +119,25 @@ public static class HtmlReportRenderer
         $"<div class=\"card\">{H(label)}<b>{H(value)}</b></div>";
 
     private static string Severity(Issue issue) => issue.Severity.ToString().ToLowerInvariant();
+
+    /// <summary>Ozet tablosunda gosterilen azami duzeltme adimi sayisi.</summary>
+    private const int StepsInSummary = 2;
+
+    /// <summary>
+    /// Kural katalogundaki duzeltme adimlarinin ilk birkaci. Tam metin kural detay
+    /// sayfasindadir; rapor ozet tablosuna kural basina ~1300 karakter sigmaz.
+    /// </summary>
+    private static string FirstSteps(string? howToFix)
+    {
+        if (string.IsNullOrWhiteSpace(howToFix)) return string.Empty;
+
+        var steps = howToFix.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var shown = string.Join('\n', steps.Take(StepsInSummary));
+
+        return steps.Length > StepsInSummary
+            ? shown + $"\n… ({steps.Length - StepsInSummary} adım daha, kural detayında)"
+            : shown;
+    }
 
     /// <summary>Kuralin birincil kaynagi; seed'te tanimsizsa hicbir sey basilmaz.</summary>
     private static string DocLink(string? docUrl) => string.IsNullOrWhiteSpace(docUrl)

@@ -34,7 +34,7 @@ export function SitesPage() {
       {error && <ErrorBox message={error} onRetry={reload} />}
 
       {data && data.sites.length === 0 && (
-        <Empty>Henüz site yok. İlk siteni ekle ve taramayı başlat.</Empty>
+        <Empty>Henüz site yok. İlk sitenizi ekleyin ve taramayı başlatın.</Empty>
       )}
 
       <div className="site-grid">
@@ -95,7 +95,7 @@ function SiteCard({ site, onChanged }: { site: DashboardSite; onChanged: () => v
 
   const remove = () =>
     void run(async () => {
-      if (!window.confirm(`"${site.name}" ve tüm tarama geçmişi silinecek. Emin misin?`)) return
+      if (!window.confirm(`"${site.name}" ve tüm tarama geçmişi silinecek. Emin misiniz?`)) return
       await deleteSite(site.siteId)
       onChanged()
     })

@@ -123,11 +123,20 @@
 /*
  * Kural katalogundan gelen uzun metinler. HowToFixTr numarali adimlari satir sonuyla
  * ayirir; pre-line olmadan hepsi tek paragrafa yapisir.
+ * Genislik karta birakilir — sabit bir olcu kolonu kartin sagini bos gosteriyordu.
  */
 .prose {
   white-space: pre-line;
-  max-width: 72ch;
   line-height: 1.7;
+  text-wrap: pretty;
+}
+
+/* Etkilenen sayfalar tablosunun ustundeki triyaj notu — tablodan gorsel olarak ayrilir. */
+.triage {
+  margin: 0 0 16px;
+  padding-left: 12px;
+  border-left: 3px solid var(--border);
+  color: var(--muted);
 }
 
 /* Kuralin birincil kaynagina giden dis baglanti — prose bloklarinin altinda. */

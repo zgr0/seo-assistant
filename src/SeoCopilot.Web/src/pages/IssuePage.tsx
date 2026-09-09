@@ -71,6 +71,7 @@ export function IssuePage({ crawlId, ruleCode }: { crawlId: string; ruleCode: st
 
       <Card>
         <h2 className="card-title">Etkilenen sayfalar</h2>
+        {first.affectedNote && <p className="prose triage">{first.affectedNote}</p>}
         <AffectedTable issues={data.affected.items} onChanged={reload} />
         <Pager
           page={data.affected.page}

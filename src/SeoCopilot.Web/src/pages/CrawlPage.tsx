@@ -268,7 +268,13 @@ function IssueGroupRow({
           <SeverityBadge severity={group.severity} />
         </td>
         <td>
-          {group.ruleTitle}
+          {/* Satirin kendisi acip kapatiyor; link tiklamasi ona karismasin. */}
+          <a
+            href={`#/crawls/${crawlId}/rules/${group.ruleCode}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {group.ruleTitle}
+          </a>
           <div className="cell-sub">{group.ruleCode}</div>
         </td>
         <td>{categoryLabel(group.category)}</td>

@@ -52,6 +52,7 @@ export interface Issue {
   ruleDescription: string | null
   whenToIgnore: string | null
   howToFix: string | null
+  affectedNote: string | null
   docUrl: string | null
   found: string | null
   expected: string | null
