@@ -53,15 +53,15 @@ public static class HtmlReportRenderer
         if (previous is not null)
         {
             var delta = crawl.OverallScore - previous.OverallScore;
-            sb.AppendLine("<h2>Onceki taramaya gore</h2>");
-            sb.AppendLine($"<p>Onceki skor: {previous.OverallScore?.ToString("0.0") ?? "—"} · "
-                + $"degisim: {(delta is null ? "—" : delta.Value.ToString("+0.0;-0.0;0"))} · "
+            sb.AppendLine("<h2>Önceki taramaya göre</h2>");
+            sb.AppendLine($"<p>Önceki skor: {previous.OverallScore?.ToString("0.0") ?? "—"} · "
+                + $"değişim: {(delta is null ? "—" : delta.Value.ToString("+0.0;-0.0;0"))} · "
                 + $"sayfa: {previous.PagesCrawled} → {crawl.PagesCrawled}</p>");
         }
 
         if (crawl.CategoryScores.Count > 0)
         {
-            sb.AppendLine("<h2>Kategori skorlari</h2><table><tr><th>Kategori</th><th>Skor</th></tr>");
+            sb.AppendLine("<h2>Kategori skorları</h2><table><tr><th>Kategori</th><th>Skor</th></tr>");
             foreach (var (category, score) in crawl.CategoryScores.OrderBy(c => c.Key))
                 sb.AppendLine($"<tr><td>{H(category)}</td><td>{score:0.0}</td></tr>");
             sb.AppendLine("</table>");
@@ -69,7 +69,7 @@ public static class HtmlReportRenderer
 
         if (crawl.IssueCounts.Count > 0)
         {
-            sb.AppendLine("<h2>Onem dagilimi</h2><table><tr><th>Onem</th><th>Adet</th></tr>");
+            sb.AppendLine("<h2>Önem dağılımı</h2><table><tr><th>Önem</th><th>Adet</th></tr>");
             foreach (var (severity, count) in crawl.IssueCounts.OrderBy(c => c.Key))
                 sb.AppendLine($"<tr><td class=\"{H(severity)}\">{H(severity)}</td><td>{count}</td></tr>");
             sb.AppendLine("</table>");
@@ -80,8 +80,8 @@ public static class HtmlReportRenderer
             .OrderByDescending(g => g.Max(i => (int)i.Severity))
             .ThenByDescending(g => g.Count());
 
-        sb.AppendLine("<h2>Kural bazli ozet</h2>");
-        sb.AppendLine("<table><tr><th>Kural</th><th>Onem</th><th>Adet</th><th>Nasil duzeltilir</th></tr>");
+        sb.AppendLine("<h2>Kural bazlı özet</h2>");
+        sb.AppendLine("<table><tr><th>Kural</th><th>Önem</th><th>Adet</th><th>Nasıl düzeltilir</th></tr>");
         foreach (var group in grouped)
         {
             var first = group.First();
@@ -94,7 +94,7 @@ public static class HtmlReportRenderer
         sb.AppendLine("</table>");
 
         sb.AppendLine($"<h2>Bulgular (ilk {MaxIssuesListed})</h2>");
-        sb.AppendLine("<table><tr><th>Onem</th><th>Kural</th><th>Sayfa</th><th>Kanit</th></tr>");
+        sb.AppendLine("<table><tr><th>Önem</th><th>Kural</th><th>Sayfa</th><th>Kanıt</th></tr>");
         foreach (var issue in issues
             .OrderByDescending(i => i.Severity)
             .ThenBy(i => i.RuleCode)
@@ -108,7 +108,7 @@ public static class HtmlReportRenderer
         }
         sb.AppendLine("</table>");
 
-        sb.AppendLine($"<p class=\"sub\">Uretim: {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm} UTC · SeoCopilot</p>");
+        sb.AppendLine($"<p class=\"sub\">Üretim: {DateTimeOffset.UtcNow:yyyy-MM-dd HH:mm} UTC · SeoCopilot</p>");
         sb.AppendLine("</body></html>");
 
         return Encoding.UTF8.GetBytes(sb.ToString());
@@ -122,7 +122,7 @@ public static class HtmlReportRenderer
     /// <summary>Kuralin birincil kaynagi; seed'te tanimsizsa hicbir sey basilmaz.</summary>
     private static string DocLink(string? docUrl) => string.IsNullOrWhiteSpace(docUrl)
         ? string.Empty
-        : $"<br><small><a class=\"url\" href=\"{H(docUrl)}\">Kaynak dokuman</a></small>";
+        : $"<br><small><a class=\"url\" href=\"{H(docUrl)}\">Kaynak doküman</a></small>";
 
     private static string H(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
 }

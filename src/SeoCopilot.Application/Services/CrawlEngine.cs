@@ -229,7 +229,7 @@ public sealed class CrawlEngine(
         {
             // Tek sayfa bile cekilmeden iptal edildiyse bu bir hata degil.
             if (cancelled) return CrawlStatus.Cancelled;
-            throw new InvalidOperationException("Hicbir sayfa taranamadi — base_url gecersiz olabilir");
+            throw new InvalidOperationException("Hiçbir sayfa taranamadı — base_url geçersiz olabilir");
         }
 
         var htmlPages = pages.Count;
@@ -506,7 +506,7 @@ public sealed class CrawlEngine(
     private static Uri ResolveBaseUri(string baseUrl)
     {
         var normalized = UrlNormalizer.NormalizeSiteBaseUrl(baseUrl)
-            ?? throw new InvalidOperationException($"Gecersiz site adresi: {baseUrl}");
+            ?? throw new InvalidOperationException($"Geçersiz site adresi: {baseUrl}");
         return new Uri(normalized + "/");
     }
 

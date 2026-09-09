@@ -37,7 +37,7 @@ public sealed class FileReportStorage(IOptions<ReportStorageOptions> options) : 
     {
         var path = Path.GetFullPath(Path.Combine(_root, key));
         if (!path.StartsWith(_root, StringComparison.Ordinal))
-            throw new InvalidOperationException("Gecersiz depolama anahtari");
+            throw new InvalidOperationException("Geçersiz depolama anahtarı");
         return path;
     }
 }

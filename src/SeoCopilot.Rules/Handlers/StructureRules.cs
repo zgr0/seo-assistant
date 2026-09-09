@@ -36,7 +36,7 @@ public sealed class ThinContentRule : ISeoRule
 
     public string? Evaluate(PageInput page) =>
         page.WordCount < MinWords
-            ? $"Icerik zayif ({page.WordCount} kelime, min {MinWords})."
+            ? $"İçerik zayıf ({page.WordCount} kelime, min {MinWords})."
             : null;
 }
 
@@ -54,7 +54,7 @@ public sealed class HeadingHierarchyBrokenRule : ISeoRule
         foreach (var level in page.HeadingLevels)
         {
             if (previous > 0 && level > previous + 1)
-                return $"Baslik seviyesi atlanmis: h{previous} sonrasi h{level} geliyor.";
+                return $"Başlık seviyesi atlanmış: h{previous} sonrası h{level} geliyor.";
 
             previous = level;
         }

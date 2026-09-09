@@ -29,7 +29,7 @@ public sealed class MetaTitleTooShortRule : ISeoRule
         if (string.IsNullOrEmpty(t)) return null; // META_TITLE_MISSING ilgilenir
 
         return t.Length < Min
-            ? $"Title cok kisa ({t.Length} krk). En az {Min} karakter olmali."
+            ? $"Title çok kısa ({t.Length} krk). En az {Min} karakter olmalı."
             : null;
     }
 }
@@ -49,7 +49,7 @@ public sealed class MetaTitleTooLongRule : ISeoRule
         if (string.IsNullOrEmpty(t)) return null; // META_TITLE_MISSING ilgilenir
 
         return t.Length > Max
-            ? $"Title cok uzun ({t.Length} krk). En fazla {Max} karakter olmali."
+            ? $"Title çok uzun ({t.Length} krk). En fazla {Max} karakter olmalı."
             : null;
     }
 }

@@ -25,23 +25,23 @@ public sealed class ReportService(
         Guid siteId, Guid tenantId, CreateReportRequest request, CancellationToken ct = default)
     {
         var site = await sites.GetSiteForTenantAsync(siteId, tenantId, ct)
-            ?? throw new NotFoundException($"Site {siteId} bulunamadi");
+            ?? throw new NotFoundException($"Site {siteId} bulunamadı");
 
         var crawl = request.CrawlId is Guid crawlId
             ? await sites.GetCrawlForTenantAsync(crawlId, tenantId, ct)
-                ?? throw new NotFoundException($"Crawl {crawlId} bulunamadi")
+                ?? throw new NotFoundException($"Crawl {crawlId} bulunamadı")
             : await sites.GetLatestCrawlAsync(siteId, ct)
                 ?? throw new InvalidOperationException("Site icin raporlanacak tarama yok");
 
         if (crawl.SiteId != site.Id)
-            throw new InvalidOperationException("Tarama bu siteye ait degil");
+            throw new InvalidOperationException("Tarama bu siteye ait değil");
 
         if (request.CompareCrawlId is Guid compareId)
         {
             var compare = await sites.GetCrawlForTenantAsync(compareId, tenantId, ct)
-                ?? throw new NotFoundException($"Crawl {compareId} bulunamadi");
+                ?? throw new NotFoundException($"Crawl {compareId} bulunamadı");
             if (compare.SiteId != site.Id)
-                throw new InvalidOperationException("Kiyaslanan tarama bu siteye ait degil");
+                throw new InvalidOperationException("Kıyaslanan tarama bu siteye ait değil");
         }
 
         var end = request.PeriodEnd ?? DateOnly.FromDateTime(DateTime.UtcNow);
@@ -70,7 +70,7 @@ public sealed class ReportService(
     public async Task RunAsync(Guid reportId, CancellationToken ct = default)
     {
         var report = await reports.GetReportAsync(reportId, ct)
-            ?? throw new NotFoundException($"Rapor {reportId} bulunamadi");
+            ?? throw new NotFoundException($"Rapor {reportId} bulunamadı");
 
         if (report.Status is ReportStatus.Done or ReportStatus.Running) return;
 
@@ -82,7 +82,7 @@ public sealed class ReportService(
             var site = await sites.GetSiteAsync(report.SiteId, ct)
                 ?? throw new NotFoundException($"Site {report.SiteId} bulunamadi");
             var crawl = await sites.GetCrawlAsync(report.CrawlId, ct)
-                ?? throw new NotFoundException($"Crawl {report.CrawlId} bulunamadi");
+                ?? throw new NotFoundException($"Crawl {report.CrawlId} bulunamadı");
 
             var issues = await sites.ListIssuesAsync(report.CrawlId, ct);
             var previous = report.CompareCrawlId is Guid compareId
@@ -121,7 +121,7 @@ public sealed class ReportService(
         Guid siteId, Guid tenantId, CancellationToken ct = default)
     {
         _ = await sites.GetSiteForTenantAsync(siteId, tenantId, ct)
-            ?? throw new NotFoundException($"Site {siteId} bulunamadi");
+            ?? throw new NotFoundException($"Site {siteId} bulunamadı");
 
         return [.. (await reports.ListReportsAsync(siteId, ct)).Select(ReportDto.From)];
     }
@@ -131,13 +131,13 @@ public sealed class ReportService(
         Guid reportId, Guid tenantId, CancellationToken ct = default)
     {
         var report = await reports.GetReportForTenantAsync(reportId, tenantId, ct)
-            ?? throw new NotFoundException($"Rapor {reportId} bulunamadi");
+            ?? throw new NotFoundException($"Rapor {reportId} bulunamadı");
 
         if (report.Status != ReportStatus.Done || report.StorageKey is null)
-            throw new InvalidOperationException($"Rapor henuz hazir degil (durum: {report.Status})");
+            throw new InvalidOperationException($"Rapor henüz hazır değil (durum: {report.Status})");
 
         var content = await storage.ReadAsync(report.StorageKey, ct)
-            ?? throw new NotFoundException("Rapor dosyasi depoda bulunamadi");
+            ?? throw new NotFoundException("Rapor dosyası depoda bulunamadı");
 
         return (content, $"seocopilot-rapor-{report.PeriodEnd:yyyyMMdd}-{report.Id}.html");
     }

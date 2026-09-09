@@ -24,7 +24,7 @@ public sealed class CrawlOrchestrator(
         StartCrawlRequest request, Guid tenantId, CancellationToken ct = default)
     {
         var site = await repository.GetSiteForTenantAsync(request.SiteId, tenantId, ct)
-            ?? throw new NotFoundException($"Site {request.SiteId} bulunamadi");
+            ?? throw new NotFoundException($"Site {request.SiteId} bulunamadı");
 
         var crawl = new Crawl
         {
@@ -44,7 +44,7 @@ public sealed class CrawlOrchestrator(
     public async Task RunAsync(Guid crawlId, CancellationToken ct = default)
     {
         var crawl = await repository.GetCrawlAsync(crawlId, ct)
-            ?? throw new NotFoundException($"Crawl {crawlId} bulunamadi");
+            ?? throw new NotFoundException($"Crawl {crawlId} bulunamadı");
         var site = await repository.GetSiteAsync(crawl.SiteId, ct)
             ?? throw new NotFoundException($"Site {crawl.SiteId} bulunamadi");
 
@@ -88,7 +88,7 @@ public sealed class CrawlOrchestrator(
     public async Task<CrawlSummaryDto> CancelAsync(Guid crawlId, Guid tenantId, CancellationToken ct = default)
     {
         var crawl = await repository.GetCrawlForTenantAsync(crawlId, tenantId, ct)
-            ?? throw new NotFoundException($"Crawl {crawlId} bulunamadi");
+            ?? throw new NotFoundException($"Crawl {crawlId} bulunamadı");
 
         if (TerminalStatuses.Contains(crawl.Status))
             throw new InvalidOperationException($"Tarama '{crawl.Status}' durumunda — iptal edilemez");
@@ -112,7 +112,7 @@ public sealed class CrawlOrchestrator(
         Guid siteId, Guid tenantId, int page, int size, CancellationToken ct = default)
     {
         _ = await repository.GetSiteForTenantAsync(siteId, tenantId, ct)
-            ?? throw new NotFoundException($"Site {siteId} bulunamadi");
+            ?? throw new NotFoundException($"Site {siteId} bulunamadı");
 
         var (pageNumber, pageSize) = Paging.Normalize(page, size);
         var total = await repository.CountCrawlsAsync(siteId, ct);
@@ -183,7 +183,7 @@ public sealed class CrawlOrchestrator(
         if (current is null || previous is null) return null;
 
         if (current.SiteId != previous.SiteId)
-            throw new InvalidOperationException("Yalniz ayni sitenin taramalari kiyaslanabilir");
+            throw new InvalidOperationException("Yalnız aynı sitenin taramaları kıyaslanabilir");
 
         var currentIssues = await repository.ListIssuesAsync(crawlId, ct);
         var previousIssues = await repository.ListIssuesAsync(previousCrawlId, ct);

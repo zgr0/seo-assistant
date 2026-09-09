@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import type { Severity } from '../api/types.ts'
 import { categoryLabel, crawlStatusLabel, scoreTone, severityLabel } from './format.ts'
 
-export function Spinner({ label = 'Yukleniyor' }: { label?: string }) {
+export function Spinner({ label = 'Yükleniyor' }: { label?: string }) {
   return (
     <div className="state" role="status">
       <span className="spinner" aria-hidden="true" />
@@ -105,7 +105,7 @@ export function ScoreGauge({
 export function TrendArrow({ delta }: { delta: number | null }) {
   if (delta === null || delta === 0) {
     return (
-      <span className="trend trend-flat" title="Degisim yok">
+      <span className="trend trend-flat" title="Değişim yok">
         —
       </span>
     )
@@ -164,10 +164,10 @@ export function Pager({
         disabled={page <= 1}
         onClick={() => onChange(page - 1)}
       >
-        Onceki
+        Önceki
       </button>
       <span>
-        {page} / {lastPage} · {total} kayit
+        {page} / {lastPage} · {total} kayıt
       </span>
       <button
         type="button"

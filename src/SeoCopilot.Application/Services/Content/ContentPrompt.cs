@@ -22,8 +22,8 @@ public static class ContentPrompt
     public static string System(BrandProfile? brand, PlatformProfile? platform)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Sen Turkce calisan bir SEO ve icerik editorusun.");
-        sb.AppendLine("Yalniz Turkce yaz. Uydurma bilgi, fiyat veya istatistik ekleme.");
+        sb.AppendLine("Sen Türkçe çalışan bir SEO ve içerik editörüsün.");
+        sb.AppendLine("Yalnız Türkçe yaz. Uydurma bilgi, fiyat veya istatistik ekleme.");
         sb.AppendLine();
 
         if (brand is not null)
@@ -35,29 +35,29 @@ public static class ContentPrompt
             sb.AppendLine($"- Emoji: {EmojiText(brand.EmojiUsage)}");
             if (brand.TargetAudience is { Length: > 0 }) sb.AppendLine($"- Hedef kitle: {brand.TargetAudience}");
             if (brand.BannedPhrases.Count > 0)
-                sb.AppendLine($"- Kullanilmayacak ifadeler: {string.Join(", ", brand.BannedPhrases)}");
+                sb.AppendLine($"- Kullanılmayacak ifadeler: {string.Join(", ", brand.BannedPhrases)}");
             if (brand.DefaultHashtags.Count > 0)
-                sb.AppendLine($"- Varsayilan hashtag'ler: {string.Join(" ", brand.DefaultHashtags)}");
-            if (brand.ExtraContext is { Length: > 0 }) sb.AppendLine($"- Ek baglam: {brand.ExtraContext}");
+                sb.AppendLine($"- Varsayılan hashtag'ler: {string.Join(" ", brand.DefaultHashtags)}");
+            if (brand.ExtraContext is { Length: > 0 }) sb.AppendLine($"- Ek bağlam: {brand.ExtraContext}");
             sb.AppendLine();
         }
 
         if (platform is not null)
         {
             sb.AppendLine($"# Platform: {platform.DisplayName}");
-            sb.AppendLine($"- Azami {platform.MaxChars} karakter, onerilen {platform.RecommendedChars}.");
+            sb.AppendLine($"- Azami {platform.MaxChars} karakter, önerilen {platform.RecommendedChars}.");
             sb.AppendLine($"- En fazla {platform.MaxHashtags} hashtag.");
             sb.AppendLine(platform.SupportsLinks
-                ? "- Link paylasimi desteklenir."
-                : "- Gonderi metnine link koyma.");
+                ? "- Link paylaşımı desteklenir."
+                : "- Gönderi metnine link koyma.");
             sb.AppendLine($"- {platform.GuidanceTr}");
             sb.AppendLine();
         }
 
-        sb.AppendLine("# Cikti bicimi");
-        sb.AppendLine("Yalniz gecerli JSON dondur, kod bloguna sarma, aciklama ekleme. Sema:");
+        sb.AppendLine("# Çıktı biçimi");
+        sb.AppendLine("Yalnız geçerli JSON döndür, kod bloğuna sarma, açıklama ekleme. Şema:");
         sb.AppendLine("""{"variants":[{"angle":"bilgilendirici|merak_uyandiran|satis_odakli","body":"metin","hashtags":["#ornek"],"cta":"eylem cagrisi"}]}""");
-        sb.AppendLine("hashtags ve cta gerekmiyorsa bos birak.");
+        sb.AppendLine("hashtags ve cta gerekmiyorsa boş bırak.");
 
         return sb.ToString();
     }
@@ -68,13 +68,13 @@ public static class ContentPrompt
         var count = VariantCount(input);
 
         var sb = new StringBuilder();
-        sb.AppendLine($"# Gorev ({count} farkli varyant uret)");
+        sb.AppendLine($"# Görev ({count} farklı varyant üret)");
         sb.AppendLine(TaskText(job.Type));
         sb.AppendLine();
 
         if (page is not null)
         {
-            sb.AppendLine("# Sayfa baglami");
+            sb.AppendLine("# Sayfa bağlamı");
             sb.AppendLine($"- URL: {page.Url}");
             if (page.Title is { Length: > 0 }) sb.AppendLine($"- Mevcut title: {page.Title}");
             if (page.MetaDescription is { Length: > 0 })
@@ -93,7 +93,7 @@ public static class ContentPrompt
 
         if (input is not null && input.Value.EnumerateObject().Any())
         {
-            sb.AppendLine("# Girdi alanlari (JSON)");
+            sb.AppendLine("# Girdi alanları (JSON)");
             sb.AppendLine(input.Value.GetRawText());
         }
 
@@ -125,46 +125,46 @@ public static class ContentPrompt
     private static string TaskText(ContentJobType type) => type switch
     {
         ContentJobType.Title =>
-            "Sayfa icin SEO uyumlu title etiketi yaz. 30-60 karakter, ana anahtar kelime basta, tiklama cekici.",
+            "Sayfa için SEO uyumlu title etiketi yaz. 30-60 karakter, ana anahtar kelime başta, tıklama çekici.",
         ContentJobType.MetaDescription =>
-            "Sayfa icin meta description yaz. 120-155 karakter, ozet + eylem cagrisi, anahtar kelimeyi dogal kullan.",
+            "Sayfa için meta description yaz. 120-155 karakter, özet + eylem çağrısı, anahtar kelimeyi doğal kullan.",
         ContentJobType.H1 =>
-            "Sayfa icin tek bir H1 basligi yaz. Title'i tekrar etme, sayfanin ana vaadini soyle.",
+            "Sayfa için tek bir H1 başlığı yaz. Title'ı tekrar etme, sayfanın ana vaadini söyle.",
         ContentJobType.ProductDescription =>
-            "Urun aciklamasi yaz. Fayda odakli, taranabilir, ozellikleri somut anlat; teknik veriyi uydurma.",
+            "Ürün açıklaması yaz. Fayda odaklı, taranabilir, özellikleri somut anlat; teknik veriyi uydurma.",
         ContentJobType.BlogOutline =>
-            "Blog yazisi icin plan cikar. H2/H3 basliklari ve her basligin altinda 1 cumlelik not ver.",
+            "Blog yazısı için plan çıkar. H2/H3 başlıkları ve her başlığın altında 1 cümlelik not ver.",
         ContentJobType.FixAdvice =>
-            "Verilen SEO bulgusunu bu sayfaya ozel hale getir. Govdeyi uc bolum halinde yaz:\n"
-            + "1. Olasi kok neden — kanit alanindaki degere ve sayfa baglamina dayanarak bu sayfada "
-            + "sorunun neden ciktigini soyle.\n"
-            + "2. Duzeltme adimlari — numarali ve somut. baseAdvice alanindaki genel metni "
-            + "tekrarlama; onu bu sayfanin verisiyle ozellestir.\n"
-            + "3. Nasil dogrularim — degisiklikten sonra bakilacak tek bir somut kontrol.\n"
-            + "Erisemedigin bilgiyi uydurma; emin olmadigin yerde neyin kontrol edilmesi gerektigini "
-            + "yaz. whenToIgnore alanindaki durum bu sayfa icin gecerliyse bunu bastan belirt.",
+            "Verilen SEO bulgusunu bu sayfaya özel hale getir. Gövdeyi üç bölüm halinde yaz:\n"
+            + "1. Olası kök neden — kanıt alanındaki değere ve sayfa bağlamına dayanarak bu sayfada "
+            + "sorunun neden çıktığını söyle.\n"
+            + "2. Düzeltme adımları — numaralı ve somut. baseAdvice alanındaki genel metni "
+            + "tekrarlama; onu bu sayfanın verisiyle özelleştir.\n"
+            + "3. Nasıl doğrularım — değişiklikten sonra bakılacak tek bir somut kontrol.\n"
+            + "Erişemediğin bilgiyi uydurma; emin olmadığın yerde neyin kontrol edilmesi gerektiğini "
+            + "yaz. whenToIgnore alanındaki durum bu sayfa için geçerliyse bunu baştan belirt.",
         ContentJobType.SocialPost =>
-            "Platforma uygun tek bir sosyal medya gonderisi yaz. Ilk satir kanca olsun.",
+            "Platforma uygun tek bir sosyal medya gönderisi yaz. İlk satır kanca olsun.",
         ContentJobType.SocialBatch =>
-            "Platforma uygun, birbirinden farkli acilarda sosyal medya gonderileri yaz.",
+            "Platforma uygun, birbirinden farklı açılarda sosyal medya gönderileri yaz.",
         ContentJobType.HashtagSet =>
-            "Icerige uygun hashtag seti oner. Genel + niche karisimi olsun, spam gorunmesin.",
-        _ => "Sayfa icin istenen icerigi uret."
+            "İçeriğe uygun hashtag seti öner. Genel + niche karışımı olsun, spam görünmesin.",
+        _ => "Sayfa için istenen içeriği üret."
     };
 
     private static string ToneText(BrandTone tone) => tone switch
     {
-        BrandTone.Kurumsal => "kurumsal, olculu",
-        BrandTone.Samimi => "samimi, gunluk dil",
+        BrandTone.Kurumsal => "kurumsal, ölçülü",
+        BrandTone.Samimi => "samimi, günlük dil",
         BrandTone.Teknik => "teknik, kesin",
-        BrandTone.SatisOdakli => "satis odakli, ikna edici",
-        _ => "notr"
+        BrandTone.SatisOdakli => "satış odaklı, ikna edici",
+        _ => "nötr"
     };
 
     private static string EmojiText(EmojiUsage usage) => usage switch
     {
         EmojiUsage.None => "kullanma",
-        EmojiUsage.Light => "az sayida, yerinde kullan",
+        EmojiUsage.Light => "az sayıda, yerinde kullan",
         EmojiUsage.Heavy => "bol kullan",
         _ => "kullanma"
     };

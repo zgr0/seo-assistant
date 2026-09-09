@@ -11,11 +11,11 @@ public sealed class ApiExceptionHandler(IProblemDetailsService problemDetails) :
     {
         var (status, title) = ex switch
         {
-            AuthException => (StatusCodes.Status401Unauthorized, "Kimlik dogrulama basarisiz"),
-            ConflictException => (StatusCodes.Status409Conflict, "Cakisma"),
-            NotFoundException => (StatusCodes.Status404NotFound, "Bulunamadi"),
-            InvalidOperationException => (StatusCodes.Status400BadRequest, "Gecersiz istek"),
-            _ => (StatusCodes.Status500InternalServerError, "Sunucu hatasi")
+            AuthException => (StatusCodes.Status401Unauthorized, "Kimlik doğrulama başarısız"),
+            ConflictException => (StatusCodes.Status409Conflict, "Çakışma"),
+            NotFoundException => (StatusCodes.Status404NotFound, "Bulunamadı"),
+            InvalidOperationException => (StatusCodes.Status400BadRequest, "Geçersiz istek"),
+            _ => (StatusCodes.Status500InternalServerError, "Sunucu hatası")
         };
 
         ctx.Response.StatusCode = status;

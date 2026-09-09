@@ -6,15 +6,15 @@ export function crawlStatusLabel(status: string): string {
     case 'Queued':
       return 'Kuyrukta'
     case 'Running':
-      return 'Calisiyor'
+      return 'Çalışıyor'
     case 'Completed':
-      return 'Tamamlandi'
+      return 'Tamamlandı'
     case 'Partial':
-      return 'Kismi'
+      return 'Kısmi'
     case 'Failed':
-      return 'Basarisiz'
+      return 'Başarısız'
     case 'Cancelled':
-      return 'Iptal'
+      return 'İptal'
     default:
       return status
   }
@@ -22,9 +22,9 @@ export function crawlStatusLabel(status: string): string {
 
 export const severityLabels: Record<string, string> = {
   Critical: 'Kritik',
-  High: 'Yuksek',
+  High: 'Yüksek',
   Medium: 'Orta',
-  Low: 'Dusuk',
+  Low: 'Düşük',
 }
 
 export function severityLabel(severity: string): string {
@@ -36,19 +36,19 @@ export function severityLabel(severity: string): string {
  * kullaniciya bir sey soylemiyor.
  */
 export function weightNote(weight: number): string {
-  if (weight >= 8) return 'skoru en cok dusuren gruptan, oncelikle bunu kapat'
-  if (weight >= 5) return 'skora orta duzeyde etkisi var'
-  return 'skora etkisi sinirli, sirasi geldiginde ele al'
+  if (weight >= 8) return 'skoru en çok düşüren gruptan, öncelikle bunu kapat'
+  if (weight >= 5) return 'skora orta düzeyde etkisi var'
+  return 'skora etkisi sınırlı, sırası geldiğinde ele al'
 }
 
 const categoryLabels: Record<string, string> = {
   indexability: 'Dizinlenebilirlik',
   meta: 'Meta',
-  content: 'Icerik',
+  content: 'İçerik',
   links: 'Linkler',
   performance: 'Performans',
-  structureddata: 'Yapisal veri',
-  images: 'Gorseller',
+  structureddata: 'Yapısal veri',
+  images: 'Görseller',
   i18n: 'Dil',
 }
 
@@ -77,15 +77,15 @@ export function formatDate(value: string | null): string {
 
 /** "3 saat once" gibi kisa goreli zaman. */
 export function timeAgo(value: string | null): string {
-  if (!value) return 'hic'
+  if (!value) return 'hiç'
   const diff = Date.now() - new Date(value).getTime()
   const minutes = Math.round(diff / 60000)
-  if (minutes < 1) return 'az once'
-  if (minutes < 60) return `${minutes} dk once`
+  if (minutes < 1) return 'az önce'
+  if (minutes < 60) return `${minutes} dk önce`
   const hours = Math.round(minutes / 60)
-  if (hours < 24) return `${hours} saat once`
+  if (hours < 24) return `${hours} saat önce`
   const days = Math.round(hours / 24)
-  if (days < 30) return `${days} gun once`
+  if (days < 30) return `${days} gün önce`
   return formatDate(value)
 }
 

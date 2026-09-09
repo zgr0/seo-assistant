@@ -26,7 +26,7 @@ public sealed class AnthropicClient(HttpClient http, IOptions<AnthropicOptions> 
         string systemPrompt, string userPrompt, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(_opt.ApiKey))
-            throw new InvalidOperationException("Anthropic:ApiKey tanimli degil — icerik uretimi kapali");
+            throw new InvalidOperationException("Anthropic:ApiKey tanımlı değil — içerik üretimi kapalı");
 
         var payload = new
         {

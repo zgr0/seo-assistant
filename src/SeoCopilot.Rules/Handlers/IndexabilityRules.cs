@@ -12,7 +12,7 @@ public sealed class BrokenPage4xxRule : ISeoRule
     public int Weight => 10;
 
     public string? Evaluate(PageInput page) =>
-        page.StatusCode is >= 400 and < 500 ? $"Sayfa {page.StatusCode} donuyor." : null;
+        page.StatusCode is >= 400 and < 500 ? $"Sayfa {page.StatusCode} dönüyor." : null;
 }
 
 /// <summary>5xx donen ya da hic getirilemeyen sayfa.</summary>
@@ -25,8 +25,8 @@ public sealed class ServerError5xxRule : ISeoRule
 
     public string? Evaluate(PageInput page) => page.StatusCode switch
     {
-        0 => "Sayfa getirilemedi (baglanti hatasi / zaman asimi).",
-        >= 500 => $"Sayfa {page.StatusCode} donuyor.",
+        0 => "Sayfa getirilemedi (bağlantı hatası / zaman aşımı).",
+        >= 500 => $"Sayfa {page.StatusCode} dönüyor.",
         _ => null
     };
 }
@@ -43,7 +43,7 @@ public sealed class RedirectChainRule : ISeoRule
 
     public string? Evaluate(PageInput page) =>
         page.RedirectCount > MaxHops
-            ? $"Sayfaya {page.RedirectCount} yonlendirme sonrasi ulasiliyor (en fazla {MaxHops} olmali)."
+            ? $"Sayfaya {page.RedirectCount} yönlendirme sonrası ulaşılıyor (en fazla {MaxHops} olmalı)."
             : null;
 }
 
@@ -60,7 +60,7 @@ public sealed class RedirectTargetInvalidRule : ISeoRule
 
     public string? Evaluate(PageInput page) =>
         page.InvalidRedirectTarget is string target
-            ? $"Yonlendirme HTTP olmayan bir hedefe gidiyor: {target}"
+            ? $"Yönlendirme HTTP olmayan bir hedefe gidiyor: {target}"
             : null;
 }
 
@@ -74,7 +74,7 @@ public sealed class RobotsNoIndexRule : ISeoRule
 
     public string? Evaluate(PageInput page) =>
         page.RobotsMeta?.Contains("noindex", StringComparison.OrdinalIgnoreCase) == true
-            ? $"robots direktifi noindex iceriyor: \"{page.RobotsMeta}\"."
+            ? $"robots direktifi noindex içeriyor: \"{page.RobotsMeta}\"."
             : null;
 }
 
@@ -103,7 +103,7 @@ public sealed class CanonicalPointsElsewhereRule : ISeoRule
 
         return SameTarget(page.CanonicalUrl, page.Url)
             ? null
-            : $"Canonical baska adresi gosteriyor: {page.CanonicalUrl}.";
+            : $"Canonical başka adresi gösteriyor: {page.CanonicalUrl}.";
     }
 
     /// <summary>Sondaki tek '/' disinda birebir ayni mi.</summary>

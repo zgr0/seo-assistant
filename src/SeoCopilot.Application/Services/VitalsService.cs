@@ -14,7 +14,7 @@ public sealed class VitalsService(ISiteRepository repository)
         Guid siteId, Guid tenantId, string? url, int? take, CancellationToken ct = default)
     {
         _ = await repository.GetSiteForTenantAsync(siteId, tenantId, ct)
-            ?? throw new NotFoundException($"Site {siteId} bulunamadi");
+            ?? throw new NotFoundException($"Site {siteId} bulunamadı");
 
         var history = await repository.ListVitalsAsync(
             siteId, string.IsNullOrWhiteSpace(url) ? null : url.Trim(),

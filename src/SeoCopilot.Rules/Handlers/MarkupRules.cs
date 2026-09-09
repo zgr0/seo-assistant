@@ -27,8 +27,8 @@ public sealed class InvalidStructuredDataRule : ISeoRule
 
     public string? Evaluate(PageInput page) =>
         page.InvalidSchemaBlocks > 0
-            ? $"{page.InvalidSchemaBlocks} JSON-LD blogu gecersiz bicimde " +
-              "(bozuk JSON ya da tek script icinde birden fazla kok nesne)."
+            ? $"{page.InvalidSchemaBlocks} JSON-LD bloğu geçersiz biçimde " +
+              "(bozuk JSON ya da tek script içinde birden fazla kök nesne)."
             : null;
 }
 

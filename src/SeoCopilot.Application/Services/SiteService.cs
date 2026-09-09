@@ -14,7 +14,7 @@ public sealed class SiteService(ISiteRepository repository)
             throw new InvalidOperationException("Site adi zorunlu");
 
         var baseUrl = UrlNormalizer.NormalizeSiteBaseUrl(request.BaseUrl)
-            ?? throw new InvalidOperationException("Gecersiz site adresi — http/https bekleniyor");
+            ?? throw new InvalidOperationException("Geçersiz site adresi — http/https bekleniyor");
 
         var site = new Site
         {
@@ -52,7 +52,7 @@ public sealed class SiteService(ISiteRepository repository)
         if (request.BaseUrl is not null)
         {
             site.BaseUrl = UrlNormalizer.NormalizeSiteBaseUrl(request.BaseUrl)
-                ?? throw new InvalidOperationException("Gecersiz site adresi — http/https bekleniyor");
+                ?? throw new InvalidOperationException("Geçersiz site adresi — http/https bekleniyor");
         }
 
         if (request.IsActive is bool isActive) site.IsActive = isActive;
@@ -86,5 +86,5 @@ public sealed class SiteService(ISiteRepository repository)
 
     private async Task<Site> RequireSiteAsync(Guid siteId, Guid tenantId, CancellationToken ct) =>
         await repository.GetSiteForTenantAsync(siteId, tenantId, ct)
-            ?? throw new NotFoundException($"Site {siteId} bulunamadi");
+            ?? throw new NotFoundException($"Site {siteId} bulunamadı");
 }

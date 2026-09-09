@@ -108,7 +108,7 @@ public static class CrawlRules
                     RuleCategory.Content,
                     Severity.High,
                     7,
-                    $"{members.Count} sayfa ayni icerige sahip.")
+                    $"{members.Count} sayfa aynı içeriğe sahip.")
                 {
                     SampleUrls = Samples(members)
                 });
@@ -120,14 +120,14 @@ public static class CrawlRules
         DuplicateText(
             pages, p => p.Title,
             "META_TITLE_DUPLICATE", RuleCategory.Meta, Severity.Medium, 5,
-            (count, value) => $"{count} sayfa ayni title'i kullaniyor: \"{value}\".");
+            (count, value) => $"{count} sayfa aynı title'ı kullanıyor: \"{value}\".");
 
     /// <summary>META_DESC_DUPLICATE — ayni meta description birden fazla dizinlenebilir sayfada.</summary>
     private static IEnumerable<CrawlViolation> DuplicateDescriptions(IReadOnlyList<CrawlPageInput> pages) =>
         DuplicateText(
             pages, p => p.MetaDescription,
             "META_DESC_DUPLICATE", RuleCategory.Meta, Severity.Low, 3,
-            (count, value) => $"{count} sayfa ayni meta description'i kullaniyor: \"{Clip(value)}\".");
+            (count, value) => $"{count} sayfa aynı meta description'ı kullanıyor: \"{Clip(value)}\".");
 
     private static IEnumerable<CrawlViolation> DuplicateText(
         IReadOnlyList<CrawlPageInput> pages,
@@ -171,7 +171,7 @@ public static class CrawlRules
                     RuleCategory.Links,
                     Severity.High,
                     6,
-                    $"{members[0].FromUrl} sayfasinda {members.Count} kirik ic link var.")
+                    $"{members[0].FromUrl} sayfasında {members.Count} kırık iç link var.")
                 {
                     SampleUrls = [.. members.Select(l => l.ToUrl).Take(MaxSampleUrls)]
                 });
@@ -189,7 +189,7 @@ public static class CrawlRules
                     RuleCategory.Links,
                     Severity.Medium,
                     4,
-                    "Sayfaya hicbir ic link isaret etmiyor.")
+                    "Sayfaya hiçbir iç link işaret etmiyor.")
                 {
                     SampleUrls = [p.Url]
                 }));
@@ -205,7 +205,7 @@ public static class CrawlRules
                     RuleCategory.Links,
                     Severity.Low,
                     3,
-                    $"Sayfa kok sayfadan {p.Depth} tiklama uzakta (en fazla {MaxDepth} olmali).")
+                    $"Sayfa kök sayfadan {p.Depth} tıklama uzakta (en fazla {MaxDepth} olmalı).")
                 {
                     SampleUrls = [p.Url]
                 }));
@@ -223,7 +223,7 @@ public static class CrawlRules
                     RuleCategory.Indexability,
                     Severity.Medium,
                     5,
-                    "Sitede okunabilir bir sitemap bulunamadi."));
+                    "Sitede okunabilir bir sitemap bulunamadı."));
 
             // Sitemap yoksa her sayfanin disarida kalmasi beklenir; ayrica bulgu uretmeyiz.
             yield break;
@@ -259,7 +259,7 @@ public static class CrawlRules
                 RuleCategory.Indexability,
                 Severity.High,
                 7,
-                $"robots.txt {site.BlockedUrls.Count} ic adresin taranmasini engelliyor.")
+                $"robots.txt {site.BlockedUrls.Count} iç adresin taranmasını engelliyor.")
             {
                 SampleUrls = [.. site.BlockedUrls.Take(MaxSampleUrls)]
             });

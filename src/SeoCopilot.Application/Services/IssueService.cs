@@ -18,10 +18,10 @@ public sealed class IssueService(ISiteRepository repository)
         long issueId, Guid tenantId, Guid userId, IgnoreIssueRequest request, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(request.Reason))
-            throw new InvalidOperationException("Gormezden gelme gerekcesi zorunlu");
+            throw new InvalidOperationException("Görmezden gelme gerekçesi zorunlu");
 
         var issue = await repository.GetIssueForTenantAsync(issueId, tenantId, ct)
-            ?? throw new NotFoundException($"Bulgu {issueId} bulunamadi");
+            ?? throw new NotFoundException($"Bulgu {issueId} bulunamadı");
 
         var urlPattern = request.ApplyToSite ? null : issue.Page?.Url;
         var reason = request.Reason.Trim();
@@ -62,7 +62,7 @@ public sealed class IssueService(ISiteRepository repository)
     public async Task<IssueDto> ReopenAsync(long issueId, Guid tenantId, CancellationToken ct = default)
     {
         var issue = await repository.GetIssueForTenantAsync(issueId, tenantId, ct)
-            ?? throw new NotFoundException($"Bulgu {issueId} bulunamadi");
+            ?? throw new NotFoundException($"Bulgu {issueId} bulunamadı");
 
         if (issue.Page?.Url is string url)
         {

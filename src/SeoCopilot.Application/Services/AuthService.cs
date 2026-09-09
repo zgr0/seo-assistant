@@ -23,9 +23,9 @@ public sealed partial class AuthService(
         if (request.Password.Length < 8)
             throw new AuthException("Sifre en az 8 karakter olmali");
         if (string.IsNullOrWhiteSpace(request.TenantName))
-            throw new AuthException("Kiraci adi zorunlu");
+            throw new AuthException("Kiracı adı zorunlu");
         if (await users.EmailExistsAsync(email, ct))
-            throw new ConflictException("Bu e-posta zaten kayitli");
+            throw new ConflictException("Bu e-posta zaten kayıtlı");
 
         var tenant = new Tenant
         {
@@ -62,12 +62,12 @@ public sealed partial class AuthService(
         {
             // Sabit maliyetli islem — kullanici var/yok zamanlama sizintisini azalt.
             passwordHasher.Hash(request.Password);
-            throw new AuthException("E-posta veya sifre hatali");
+            throw new AuthException("E-posta veya şifre hatalı");
         }
         if (!passwordHasher.Verify(request.Password, user.PasswordHash))
-            throw new AuthException("E-posta veya sifre hatali");
+            throw new AuthException("E-posta veya şifre hatalı");
         if (user.Tenant is { IsActive: false })
-            throw new AuthException("Kiraci pasif durumda");
+            throw new AuthException("Kiracı pasif durumda");
 
         user.LastLoginAt = DateTimeOffset.UtcNow;
         await users.SaveChangesAsync(ct);
@@ -79,17 +79,17 @@ public sealed partial class AuthService(
     {
         var incomingHash = tokens.HashRefreshToken(request.RefreshToken);
         var stored = await users.FindRefreshTokenAsync(incomingHash, ct)
-            ?? throw new AuthException("Refresh token gecersiz");
+            ?? throw new AuthException("Refresh token geçersiz");
 
         if (!stored.IsActive)
-            throw new AuthException("Refresh token suresi dolmus veya iptal edilmis");
+            throw new AuthException("Refresh token süresi dolmuş veya iptal edilmiş");
 
         // Rotasyon: eskiyi iptal et, yenisini uret.
         stored.RevokedAt = DateTimeOffset.UtcNow;
 
         var user = stored.User
             ?? await users.FindByIdAsync(stored.UserId, ct)
-            ?? throw new AuthException("Kullanici bulunamadi");
+            ?? throw new AuthException("Kullanıcı bulunamadı");
 
         return await IssueAsync(user, ct);
     }

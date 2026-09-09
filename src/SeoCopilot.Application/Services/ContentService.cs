@@ -51,7 +51,7 @@ public sealed class ContentService(
         if (pageIds.Count == 0)
             throw new InvalidOperationException("En az bir pageId gerekli");
         if (pageIds.Count > MaxBatchSize)
-            throw new InvalidOperationException($"Tek seferde en fazla {MaxBatchSize} sayfa islenebilir");
+            throw new InvalidOperationException($"Tek seferde en fazla {MaxBatchSize} sayfa işlenebilir");
 
         var jobs = new List<ContentJob>(pageIds.Count);
         foreach (var pageId in pageIds)
@@ -75,7 +75,7 @@ public sealed class ContentService(
     public async Task RunAsync(Guid jobId, CancellationToken ct = default)
     {
         var job = await content.GetContentJobAsync(jobId, ct)
-            ?? throw new NotFoundException($"Icerik isi {jobId} bulunamadi");
+            ?? throw new NotFoundException($"İçerik işi {jobId} bulunamadı");
 
         // Yeniden denemede tamamlanmis isi tekrar uretme.
         if (job.Status is ContentJobStatus.Done or ContentJobStatus.Running) return;
@@ -157,7 +157,7 @@ public sealed class ContentService(
         Guid variantId, Guid tenantId, bool? isFavorite, CancellationToken ct = default)
     {
         var variant = await content.GetVariantForTenantAsync(variantId, tenantId, ct)
-            ?? throw new NotFoundException($"Varyant {variantId} bulunamadi");
+            ?? throw new NotFoundException($"Varyant {variantId} bulunamadı");
 
         variant.IsFavorite = isFavorite ?? true;
         await content.SaveChangesAsync(ct);
@@ -221,12 +221,12 @@ public sealed class ContentService(
         {
             var code = platformCode.Trim().ToLowerInvariant();
             _ = await content.GetPlatformProfileAsync(code, ct)
-                ?? throw new NotFoundException($"Platform '{code}' bulunamadi");
+                ?? throw new NotFoundException($"Platform '{code}' bulunamadı");
             platform = code;
         }
         else if (PlatformRequired.Contains(jobType))
         {
-            throw new InvalidOperationException($"'{type}' turu icin platformCode zorunlu");
+            throw new InvalidOperationException($"'{type}' türü için platformCode zorunlu");
         }
 
         Guid? siteId = null;
@@ -240,7 +240,7 @@ public sealed class ContentService(
         if (brandProfileId is Guid brandId)
         {
             _ = await content.GetBrandProfileAsync(brandId, tenantId, ct)
-                ?? throw new NotFoundException($"Marka profili {brandId} bulunamadi");
+                ?? throw new NotFoundException($"Marka profili {brandId} bulunamadı");
         }
 
         return new ContentJob

@@ -20,7 +20,7 @@ public sealed class BrandProfileService(IContentRepository content, ISiteReposit
         CreateBrandProfileRequest request, Guid tenantId, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(request.Name))
-            throw new InvalidOperationException("Profil adi zorunlu");
+            throw new InvalidOperationException("Profil adı zorunlu");
 
         await RequireSiteOrNullAsync(request.SiteId, tenantId, ct);
 
@@ -59,7 +59,7 @@ public sealed class BrandProfileService(IContentRepository content, ISiteReposit
         if (request.Name is not null)
         {
             if (string.IsNullOrWhiteSpace(request.Name))
-                throw new InvalidOperationException("Profil adi bos olamaz");
+                throw new InvalidOperationException("Profil adı boş olamaz");
             profile.Name = request.Name.Trim();
         }
 
@@ -94,7 +94,7 @@ public sealed class BrandProfileService(IContentRepository content, ISiteReposit
 
     private async Task<BrandProfile> RequireAsync(Guid id, Guid tenantId, CancellationToken ct) =>
         await content.GetBrandProfileAsync(id, tenantId, ct)
-            ?? throw new NotFoundException($"Marka profili {id} bulunamadi");
+            ?? throw new NotFoundException($"Marka profili {id} bulunamadı");
 
     private async Task RequireSiteOrNullAsync(Guid? siteId, Guid tenantId, CancellationToken ct)
     {

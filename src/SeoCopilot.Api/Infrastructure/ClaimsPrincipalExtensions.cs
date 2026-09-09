@@ -15,10 +15,10 @@ public static class ClaimsPrincipalExtensions
     public static Guid TenantId(this ClaimsPrincipal user) =>
         Guid.TryParse(user.FindFirstValue(TenantClaim), out var tenantId)
             ? tenantId
-            : throw new AuthException("Token'da gecerli tenant_id yok");
+            : throw new AuthException("Token'da geçerli tenant_id yok");
 
     public static Guid UserId(this ClaimsPrincipal user) =>
         Guid.TryParse(user.FindFirstValue(JwtRegisteredClaimNames.Sub), out var userId)
             ? userId
-            : throw new AuthException("Token'da gecerli sub yok");
+            : throw new AuthException("Token'da geçerli sub yok");
 }

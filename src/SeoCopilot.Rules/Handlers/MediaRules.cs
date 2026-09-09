@@ -12,7 +12,7 @@ public sealed class ImageMissingAltRule : ISeoRule
 
     public string? Evaluate(PageInput page) =>
         page.ImagesNoAlt > 0
-            ? $"{page.ImagesTotal} gorselin {page.ImagesNoAlt} tanesinde alt metni yok."
+            ? $"{page.ImagesTotal} görselin {page.ImagesNoAlt} tanesinde alt metni yok."
             : null;
 }
 
@@ -35,6 +35,6 @@ public sealed class ImageTooLargeRule : ISeoRule
         if (oversized.Count == 0) return null;
 
         var largest = oversized.Max(i => i.Bytes);
-        return $"{oversized.Count} gorsel {MaxBytes / 1024} KB'i asiyor (en buyugu {largest / 1024} KB).";
+        return $"{oversized.Count} görsel {MaxBytes / 1024} KB'ı aşıyor (en büyüğü {largest / 1024} KB).";
     }
 }

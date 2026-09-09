@@ -36,7 +36,7 @@ export function LoginPage() {
       <div className="auth-card">
         <header className="auth-head">
           <h1>SeoCopilot</h1>
-          <p>Site tarar, SEO skorunu cikarir, duzeltmeyi soyler.</p>
+          <p>Site tarar, SEO skorunu çıkarır, düzeltmeyi söyler.</p>
         </header>
 
         <div className="tabs" role="tablist">
@@ -47,7 +47,7 @@ export function LoginPage() {
             className={mode === 'login' ? 'tab active' : 'tab'}
             onClick={() => switchMode('login')}
           >
-            Giris
+            Giriş
           </button>
           <button
             type="button"
@@ -56,7 +56,7 @@ export function LoginPage() {
             className={mode === 'register' ? 'tab active' : 'tab'}
             onClick={() => switchMode('register')}
           >
-            Kayit
+            Kayıt
           </button>
         </div>
 
@@ -71,7 +71,7 @@ export function LoginPage() {
                   autoComplete="name"
                 />
               </Field>
-              <Field label="Kiraci adi" hint="Ajans veya sirket adi">
+              <Field label="Kiracı adı" hint="Ajans veya şirket adı">
                 <input
                   value={tenantName}
                   onChange={(e) => setTenantName(e.target.value)}
@@ -92,7 +92,7 @@ export function LoginPage() {
             />
           </Field>
 
-          <Field label="Sifre" hint={mode === 'register' ? 'En az 8 karakter' : undefined}>
+          <Field label="Şifre" hint={mode === 'register' ? 'En az 8 karakter' : undefined}>
             <input
               type="password"
               value={password}
@@ -110,7 +110,7 @@ export function LoginPage() {
           )}
 
           <button type="submit" className="btn btn-primary btn-block" disabled={busy}>
-            {busy ? 'Gonderiliyor…' : mode === 'login' ? 'Giris yap' : 'Hesap olustur'}
+            {busy ? 'Gönderiliyor…' : mode === 'login' ? 'Giriş yap' : 'Hesap oluştur'}
           </button>
         </form>
       </div>

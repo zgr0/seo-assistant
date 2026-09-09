@@ -72,7 +72,7 @@ async function tryRefresh(): Promise<boolean> {
 }
 
 async function toError(res: Response): Promise<ApiError> {
-  let message = `Istek basarisiz (${res.status})`
+  let message = `İstek başarısız (${res.status})`
   try {
     const problem = (await res.json()) as { title?: string; detail?: string }
     message = problem.detail || problem.title || message

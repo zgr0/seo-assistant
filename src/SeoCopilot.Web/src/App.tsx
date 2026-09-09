@@ -39,7 +39,7 @@ export default function App() {
             className="btn btn-ghost btn-sm"
             onClick={() => void logout().then(() => navigate('/login'))}
           >
-            Cikis
+            Çıkış
           </button>
         </div>
       </header>
@@ -66,9 +66,9 @@ function Routes({ route }: { route: string }) {
 
   return (
     <div className="page">
-      <h1>Sayfa bulunamadi</h1>
+      <h1>Sayfa bulunamadı</h1>
       <a className="btn btn-primary" href="#/sites">
-        Sitelere don
+        Sitelere dön
       </a>
     </div>
   )

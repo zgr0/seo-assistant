@@ -46,17 +46,17 @@ export function IssuePage({ crawlId, ruleCode }: { crawlId: string; ruleCode: st
           <p className="muted">
             <code>{ruleCode}</code>
             {first.category && ` · ${categoryLabel(first.category)}`} ·{' '}
-            {data.affected.total} bulgu ({data.openTotal} acik)
+            {data.affected.total} bulgu ({data.openTotal} açık)
           </p>
           <p className="muted small">
-            Agirlik {first.weight}/10 — {weightNote(first.weight)}
+            Ağırlık {first.weight}/10 — {weightNote(first.weight)}
           </p>
         </div>
       </header>
 
       <Card>
         <h2 className="card-title">Kural ne diyor?</h2>
-        <p className="prose">{first.ruleDescription ?? 'Bu kural icin aciklama tanimlanmamis.'}</p>
+        <p className="prose">{first.ruleDescription ?? 'Bu kural için açıklama tanımlanmamış.'}</p>
         <DocLink url={first.docUrl} />
       </Card>
 
@@ -64,7 +64,7 @@ export function IssuePage({ crawlId, ruleCode }: { crawlId: string; ruleCode: st
 
       {first.whenToIgnore && (
         <Card>
-          <h2 className="card-title">Yoksaymali miyim?</h2>
+          <h2 className="card-title">Yoksaymalı mıyım?</h2>
           <p className="prose">{first.whenToIgnore}</p>
         </Card>
       )}
@@ -104,7 +104,7 @@ function AffectedTable({ issues, onChanged }: { issues: Issue[]; onChanged: () =
         <thead>
           <tr>
             <th>Sayfa</th>
-            <th>Kanit</th>
+            <th>Kanıt</th>
             <th>Durum</th>
             <th />
           </tr>
@@ -162,15 +162,15 @@ function IssueRow({ issue, onChanged }: { issue: Issue; onChanged: () => void })
         <td className="cell-evidence">{evidence || '—'}</td>
         <td>
           {issue.status === 'Ignored' ? (
-            <span className="badge">Yoksayildi</span>
+            <span className="badge">Yoksayıldı</span>
           ) : (
-            <span className="badge ok">Acik</span>
+            <span className="badge ok">Açık</span>
           )}
         </td>
         <td className="cell-actions">
           {issue.status === 'Ignored' ? (
             <button type="button" className="btn btn-ghost btn-sm" onClick={reopen} disabled={busy}>
-              Geri ac
+              Geri aç
             </button>
           ) : (
             <button
@@ -178,7 +178,7 @@ function IssueRow({ issue, onChanged }: { issue: Issue; onChanged: () => void })
               className="btn btn-ghost btn-sm"
               onClick={() => setIgnoring((v) => !v)}
             >
-              {ignoring ? 'Vazgec' : 'Yoksay'}
+              {ignoring ? 'Vazgeç' : 'Yoksay'}
             </button>
           )}
         </td>
@@ -191,8 +191,8 @@ function IssueRow({ issue, onChanged }: { issue: Issue; onChanged: () => void })
               <input
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
-                placeholder="Neden yoksayiliyor? (zorunlu)"
-                aria-label="Yoksayma gerekcesi"
+                placeholder="Neden yoksayılıyor? (zorunlu)"
+                aria-label="Yoksayma gerekçesi"
               />
               <label className="check">
                 <input
@@ -200,7 +200,7 @@ function IssueRow({ issue, onChanged }: { issue: Issue; onChanged: () => void })
                   checked={applyToSite}
                   onChange={(e) => setApplyToSite(e.target.checked)}
                 />
-                Tum sitede bu kurali yoksay
+                Tüm sitede bu kuralı yoksay
               </label>
               <button
                 type="button"
@@ -268,20 +268,20 @@ function FixAdvice({ issue }: { issue: Issue }) {
   return (
     <Card>
       <div className="table-head">
-        <h2 className="card-title">Nasil duzeltilir?</h2>
+        <h2 className="card-title">Nasıl düzeltilir?</h2>
         <button type="button" className="btn btn-ghost btn-sm" onClick={ask} disabled={busy || pending}>
-          {pending ? 'Uretiliyor…' : 'AI ile detaylandir'}
+          {pending ? 'Üretiliyor…' : 'AI ile detaylandır'}
         </button>
       </div>
 
-      <p className="prose">{issue.howToFix ?? 'Bu kural icin duzeltme notu tanimlanmamis.'}</p>
+      <p className="prose">{issue.howToFix ?? 'Bu kural için düzeltme notu tanımlanmamış.'}</p>
 
       {error && <p className="form-error">{error}</p>}
 
-      {pending && <div className="state">Model calisiyor, birkac saniye surebilir…</div>}
+      {pending && <div className="state">Model çalışıyor, birkaç saniye sürebilir…</div>}
 
       {job?.status === 'Failed' && (
-        <ErrorBox message={job.errorMessage ?? 'Uretim basarisiz oldu.'} />
+        <ErrorBox message={job.errorMessage ?? 'Üretim başarısız oldu.'} />
       )}
 
       {job?.status === 'Done' &&

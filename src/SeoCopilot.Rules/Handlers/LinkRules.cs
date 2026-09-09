@@ -34,7 +34,7 @@ public sealed class GenericAnchorTextRule : ISeoRule
 
         return hits.Count == 0
             ? null
-            : $"{hits.Count} ic linkte aciklayici olmayan anchor metni var: {string.Join(", ", hits.Take(5))}.";
+            : $"{hits.Count} iç linkte açıklayıcı olmayan anchor metni var: {string.Join(", ", hits.Take(5))}.";
     }
 
     /// <summary>Kucuk harfe cevirir, aksanlari atar, sondaki noktalama isaretlerini siler.</summary>

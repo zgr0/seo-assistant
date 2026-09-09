@@ -20,11 +20,11 @@ export function SitesPage() {
               ? `${data.siteCount} site${
                   data.averageScore !== null ? ` · ortalama skor ${data.averageScore.toFixed(1)}` : ''
                 }`
-              : 'Kiraci ozeti'}
+              : 'Kiracı özeti'}
           </p>
         </div>
         <button type="button" className="btn btn-primary" onClick={() => setAdding((v) => !v)}>
-          {adding ? 'Vazgec' : '+ Site ekle'}
+          {adding ? 'Vazgeç' : '+ Site ekle'}
         </button>
       </header>
 
@@ -34,7 +34,7 @@ export function SitesPage() {
       {error && <ErrorBox message={error} onRetry={reload} />}
 
       {data && data.sites.length === 0 && (
-        <Empty>Henuz site yok. Ilk siteni ekle ve taramayi baslat.</Empty>
+        <Empty>Henüz site yok. İlk siteni ekle ve taramayı başlat.</Empty>
       )}
 
       <div className="site-grid">
@@ -62,8 +62,8 @@ function AddSiteForm({ onDone }: { onDone: () => void }) {
   return (
     <Card className="add-site">
       <form className="form form-row" onSubmit={submit}>
-        <Field label="Site adi">
-          <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Ornek Magaza" />
+        <Field label="Site adı">
+          <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Örnek Mağaza" />
         </Field>
         <Field label="Adres" hint="https://ornek.com">
           <input
@@ -95,7 +95,7 @@ function SiteCard({ site, onChanged }: { site: DashboardSite; onChanged: () => v
 
   const remove = () =>
     void run(async () => {
-      if (!window.confirm(`"${site.name}" ve tum tarama gecmisi silinecek. Emin misin?`)) return
+      if (!window.confirm(`"${site.name}" ve tüm tarama geçmişi silinecek. Emin misin?`)) return
       await deleteSite(site.siteId)
       onChanged()
     })
@@ -122,7 +122,7 @@ function SiteCard({ site, onChanged }: { site: DashboardSite; onChanged: () => v
           <dd className={critical > 0 ? 'tone-bad' : 'tone-good'}>{critical}</dd>
         </div>
         <div>
-          <dt>Yuksek</dt>
+          <dt>Yüksek</dt>
           <dd className={high > 0 ? 'tone-warn' : 'tone-good'}>{high}</dd>
         </div>
         <div>

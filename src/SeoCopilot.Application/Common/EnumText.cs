@@ -21,7 +21,7 @@ public static class EnumText
     {
         if (string.IsNullOrWhiteSpace(value)) return null;
         if (!TryParse<T>(value, out var parsed))
-            throw new InvalidOperationException($"Gecersiz {fieldName}: '{value}'");
+            throw new InvalidOperationException($"Geçersiz {fieldName}: '{value}'");
         return parsed;
     }
 

@@ -29,7 +29,7 @@ public sealed class MetaDescTooLongRule : ISeoRule
         if (string.IsNullOrEmpty(d)) return null; // META_DESC_MISSING ilgilenir
 
         return d.Length > Max
-            ? $"Meta description cok uzun ({d.Length} krk). En fazla {Max} karakter olmali."
+            ? $"Meta description çok uzun ({d.Length} krk). En fazla {Max} karakter olmalı."
             : null;
     }
 }

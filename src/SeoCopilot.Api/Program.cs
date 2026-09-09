@@ -47,7 +47,7 @@ if (builder.Configuration.GetValue("Hangfire:EnableServer", true))
 // --- Auth ---
 var jwt = builder.Configuration.GetSection(JwtOptions.Section).Get<JwtOptions>() ?? new JwtOptions();
 if (string.IsNullOrWhiteSpace(jwt.Key) || Encoding.UTF8.GetByteCount(jwt.Key) < 32)
-    throw new InvalidOperationException("Jwt:Key en az 32 bayt olmali");
+    throw new InvalidOperationException("Jwt:Key en az 32 bayt olmalı");
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

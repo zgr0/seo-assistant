@@ -46,7 +46,7 @@ export function PageDetailPage({ pageId }: { pageId: string }) {
       <header className="page-head">
         <div>
           {/* title bos string de olabilir — bu durumda da yer tutucu gosterilir */}
-          <h1>{page.title || 'Basliksiz sayfa'}</h1>
+          <h1>{page.title || 'Başlıksız sayfa'}</h1>
           <a className="site-url" href={page.url} target="_blank" rel="noreferrer">
             {page.url}
           </a>
@@ -61,7 +61,7 @@ export function PageDetailPage({ pageId }: { pageId: string }) {
 
       <div className="split">
         <Card>
-          <h2 className="card-title">Cikarilan meta veriler</h2>
+          <h2 className="card-title">Çıkarılan meta veriler</h2>
           <dl className="meta-list">
             <Row label="Title" value={page.title} extra={lengthNote(page.titleLength, 30, 60)} />
             <Row
@@ -70,29 +70,29 @@ export function PageDetailPage({ pageId }: { pageId: string }) {
               extra={lengthNote(page.metaDescLength, 50, 160)}
             />
             <Row label="H1" value={page.h1Texts.join(' | ') || null} extra={`${page.h1Texts.length} adet`} />
-            <Row label="H2 sayisi" value={String(page.h2Count)} />
+            <Row label="H2 sayısı" value={String(page.h2Count)} />
             <Row label="Canonical" value={page.canonicalUrl} />
             <Row label="Robots meta" value={page.robotsMeta} />
             <Row label="Dil" value={page.lang} />
             <Row label="Schema" value={page.schemaTypes.join(', ') || null} />
-            <Row label="Kelime sayisi" value={String(page.wordCount)} />
+            <Row label="Kelime sayısı" value={String(page.wordCount)} />
             <Row
-              label="Gorseller"
+              label="Görseller"
               value={`${page.imagesTotal} adet`}
               extra={page.imagesNoAlt > 0 ? `${page.imagesNoAlt} tanesinde alt yok` : 'hepsinde alt var'}
             />
             <Row
               label="Linkler"
-              value={`${page.inlinkCount} gelen · ${page.outlinkInternal} ic · ${page.outlinkExternal} dis`}
+              value={`${page.inlinkCount} gelen · ${page.outlinkInternal} iç · ${page.outlinkExternal} dış`}
             />
             <Row
-              label="Yanit"
+              label="Yanıt"
               value={page.responseTimeMs !== null ? `${page.responseTimeMs} ms` : null}
               extra={page.htmlSizeBytes !== null ? bytes(page.htmlSizeBytes) : undefined}
             />
             <Row label="Content-Type" value={page.contentType} />
-            <Row label="Yonlendirme" value={page.redirectTo} />
-            <Row label="Tarandi" value={formatDate(page.crawledAt)} />
+            <Row label="Yönlendirme" value={page.redirectTo} />
+            <Row label="Tarandı" value={formatDate(page.crawledAt)} />
             {og && <Row label="Open Graph" value={og} />}
           </dl>
         </Card>
@@ -104,7 +104,7 @@ export function PageDetailPage({ pageId }: { pageId: string }) {
       </div>
 
       <Card>
-        <h2 className="card-title">Bu sayfanin bulgulari ({detail.issues.length})</h2>
+        <h2 className="card-title">Bu sayfanın bulguları ({detail.issues.length})</h2>
         {detail.issues.length === 0 ? (
           <Empty>Bu sayfada bulgu yok.</Empty>
         ) : (
@@ -112,10 +112,10 @@ export function PageDetailPage({ pageId }: { pageId: string }) {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Siddet</th>
+                  <th>Şiddet</th>
                   <th>Kural</th>
                   <th>Kategori</th>
-                  <th>Kanit</th>
+                  <th>Kanıt</th>
                 </tr>
               </thead>
               <tbody>
@@ -155,7 +155,7 @@ function VitalsPanel({ vitals }: { vitals: SiteVitals | null }) {
   if (!latest) {
     return (
       <Empty>
-        PSI olcumu yok. <code>PageSpeed:ApiKey</code> tanimliysa her taramada kok sayfa icin olculur.
+        PSI ölçümü yok. <code>PageSpeed:ApiKey</code> tanımlıysa her taramada kök sayfa için ölçülür.
       </Empty>
     )
   }
@@ -204,8 +204,8 @@ function Row({ label, value, extra }: { label: string; value: string | null; ext
 
 function lengthNote(length: number | null, min: number, max: number): string | undefined {
   if (length === null) return undefined
-  if (length < min) return `${length} karakter — kisa (onerilen ${min}-${max})`
-  if (length > max) return `${length} karakter — uzun (onerilen ${min}-${max})`
+  if (length < min) return `${length} karakter — kısa (önerilen ${min}-${max})`
+  if (length > max) return `${length} karakter — uzun (önerilen ${min}-${max})`
   return `${length} karakter`
 }
 

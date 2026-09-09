@@ -106,20 +106,20 @@ export function CrawlPage({ crawlId }: { crawlId: string }) {
             Tarama sonucu <StatusBadge status={crawl.status} />
           </h1>
           <p className="muted">
-            {crawl.pagesCrawled}/{crawl.pagesDiscovered} sayfa · basladi {formatDate(crawl.startedAt)}
+            {crawl.pagesCrawled}/{crawl.pagesDiscovered} sayfa · başladı {formatDate(crawl.startedAt)}
             {crawl.finishedAt && ` · bitti ${formatDate(crawl.finishedAt)}`}
           </p>
         </div>
         {running && (
           <button type="button" className="btn btn-ghost danger" onClick={cancel} disabled={busy}>
-            {busy ? '…' : 'Taramayi iptal et'}
+            {busy ? '…' : 'Taramayı iptal et'}
           </button>
         )}
       </header>
 
       {crawl.errorMessage && <ErrorBox message={crawl.errorMessage} />}
       {actionError && <ErrorBox message={actionError} />}
-      {running && <div className="state">Tarama devam ediyor, sonuclar otomatik yenileniyor…</div>}
+      {running && <div className="state">Tarama devam ediyor, sonuçlar otomatik yenileniyor…</div>}
 
       <div className="split">
         <Card className="score-card">
@@ -127,7 +127,7 @@ export function CrawlPage({ crawlId }: { crawlId: string }) {
         </Card>
 
         <Card>
-          <h2 className="card-title">Kategori skorlari</h2>
+          <h2 className="card-title">Kategori skorları</h2>
           <CategoryBars scores={crawl.categoryScores} />
         </Card>
       </div>
@@ -141,7 +141,7 @@ export function CrawlPage({ crawlId }: { crawlId: string }) {
               onChange={(e) => setCategory(e.target.value)}
               aria-label="Kategori filtresi"
             >
-              <option value="">Tum kategoriler</option>
+              <option value="">Tüm kategoriler</option>
               {categories.map((c) => (
                 <option key={c} value={c}>
                   {categoryLabel(c)}
@@ -153,9 +153,9 @@ export function CrawlPage({ crawlId }: { crawlId: string }) {
               onChange={(e) => setStatus(e.target.value as StatusFilter)}
               aria-label="Durum filtresi"
             >
-              <option value="Open">Acik</option>
-              <option value="Ignored">Yoksayilan</option>
-              <option value="">Tumu</option>
+              <option value="Open">Açık</option>
+              <option value="Ignored">Yoksayılan</option>
+              <option value="">Tümü</option>
             </select>
           </div>
         </div>
@@ -192,7 +192,7 @@ function SeverityTabs({
         className={`tab ${selected === '' ? 'active' : ''}`}
         onClick={() => onSelect('')}
       >
-        Tumu <strong className="tab-count">{counts[''] ?? 0}</strong>
+        Tümü <strong className="tab-count">{counts[''] ?? 0}</strong>
       </button>
       {severities.map((key) => (
         <button
@@ -227,7 +227,7 @@ function IssueGroupTable({
       <table className="table">
         <thead>
           <tr>
-            <th>Siddet</th>
+            <th>Şiddet</th>
             <th>Kural</th>
             <th>Kategori</th>
             <th>Bulgu</th>
@@ -275,7 +275,7 @@ function IssueGroupRow({
         <td className="cell-count">
           {countFor(group, status)}
           {status === 'Open' && group.ignoredCount > 0 && (
-            <div className="cell-sub">{group.ignoredCount} yoksayildi</div>
+            <div className="cell-sub">{group.ignoredCount} yoksayıldı</div>
           )}
         </td>
         <td className="cell-chevron">
@@ -337,12 +337,12 @@ function AffectedPreview({
             ) : (
               <span className="muted">site geneli</span>
             )}
-            {issue.status === 'Ignored' && <span className="badge">Yoksayildi</span>}
+            {issue.status === 'Ignored' && <span className="badge">Yoksayıldı</span>}
           </li>
         ))}
       </ul>
       <a className="btn btn-ghost btn-sm" href={`#/crawls/${crawlId}/rules/${ruleCode}`}>
-        {rest > 0 ? `+${rest} sayfa daha · kural detayi` : 'Kural detayi ve duzeltme onerisi'}
+        {rest > 0 ? `+${rest} sayfa daha · kural detayı` : 'Kural detayı ve düzeltme önerisi'}
       </a>
     </div>
   )
