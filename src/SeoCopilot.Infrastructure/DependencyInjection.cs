@@ -7,6 +7,7 @@ using SeoCopilot.Infrastructure.Clients;
 using SeoCopilot.Infrastructure.Email;
 using SeoCopilot.Infrastructure.Persistence;
 using SeoCopilot.Infrastructure.Reporting;
+using SeoCopilot.Infrastructure.Storage;
 
 namespace SeoCopilot.Infrastructure;
 
@@ -28,6 +29,9 @@ public static class DependencyInjection
         services.Configure<ReportStorageOptions>(config.GetSection(ReportStorageOptions.Section));
         services.AddSingleton<IReportStorage, FileReportStorage>();
 
+        services.Configure<AssetStorageOptions>(config.GetSection(AssetStorageOptions.Section));
+        services.AddSingleton<IAssetStorage, FileAssetStorage>();
+
         services.Configure<JwtOptions>(config.GetSection(JwtOptions.Section));
         services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
         services.AddSingleton<ITokenService, JwtTokenService>();
@@ -36,8 +40,11 @@ public static class DependencyInjection
         services.Configure<PsiOptions>(config.GetSection(PsiOptions.Section));
         services.Configure<SmtpOptions>(config.GetSection(SmtpOptions.Section));
 
+        services.Configure<FluxOptions>(config.GetSection(FluxOptions.Section));
+
         services.AddHttpClient<IAnthropicClient, AnthropicClient>();
         services.AddHttpClient<IPageSpeedClient, PsiClient>();
+        services.AddHttpClient<IImageGenerator, FluxImageClient>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
 
         return services;

@@ -135,9 +135,14 @@ function SiteCard({ site, onChanged }: { site: DashboardSite; onChanged: () => v
 
       <div className="site-actions">
         {site.lastCrawlId && (
-          <a className="btn btn-ghost btn-sm" href={`#/crawls/${site.lastCrawlId}`}>
-            Son tarama
-          </a>
+          <>
+            <a className="btn btn-ghost btn-sm" href={`#/crawls/${site.lastCrawlId}`}>
+              Son tarama
+            </a>
+            <a className="btn btn-ghost btn-sm" href={`#/sites/${site.siteId}/social`}>
+              Sosyal içerik
+            </a>
+          </>
         )}
         <button type="button" className="btn btn-primary btn-sm" onClick={crawl} disabled={busy}>
           {busy ? '…' : 'Tara'}

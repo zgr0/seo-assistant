@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using SeoCopilot.Application.Services;
+using SeoCopilot.Application.Services.Social;
 
 namespace SeoCopilot.Application;
 
@@ -14,6 +15,8 @@ public static class DependencyInjection
         services.AddScoped<IssueService>();
         services.AddScoped<BrandProfileService>();
         services.AddScoped<ContentService>();
+        services.AddScoped<SocialKitService>();
+        services.AddScoped<SocialImageService>();
         services.AddScoped<ReportService>();
         services.AddScoped<VitalsService>();
         services.AddScoped<DashboardService>();

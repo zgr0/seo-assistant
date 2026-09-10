@@ -46,10 +46,18 @@ services:
       Crawler__BrowserArgs__0: "--no-sandbox"
 
       Anthropic__ApiKey: ${ANTHROPIC_API_KEY:-}
+      # Yalniz workspace'e bagli olmayan organizasyon anahtarlari icin gerekir.
+      Anthropic__WorkspaceId: ${ANTHROPIC_WORKSPACE_ID:-}
       PageSpeed__ApiKey: ${PAGESPEED_API_KEY:-}
+
+      # Sosyal medya gorsel uretimi (FLUX). Bos birakilirsa gonderiler gorselsiz uretilir.
+      Flux__ApiKey: ${FLUX_API_KEY:-}
+
       Reports__Directory: /app/App_Data/reports
+      Assets__Directory: /app/App_Data/assets
     volumes:
       - reports:/app/App_Data/reports
+      - assets:/app/App_Data/assets
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
       interval: 10s
@@ -73,3 +81,4 @@ services:
 volumes:
   pgdata:
   reports:
+  assets:

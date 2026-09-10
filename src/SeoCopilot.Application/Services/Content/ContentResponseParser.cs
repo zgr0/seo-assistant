@@ -72,7 +72,14 @@ public static class ContentResponseParser
         if (string.IsNullOrWhiteSpace(body) && hashtags.Count > 0) body = string.Join(" ", hashtags);
         if (string.IsNullOrWhiteSpace(body)) return null;
 
-        return NewVariant(index, Text(item, "angle"), body, hashtags, Text(item, "cta"));
+        var variant = NewVariant(index, Text(item, "angle"), body, hashtags, Text(item, "cta"));
+
+        // Sosyal paket alanlari — diger is turlerinde yoktur, null kalir.
+        variant.Description = Clip(Text(item, "description"), 1024);
+        variant.ImageBrief = Clip(Text(item, "imageBrief") ?? Text(item, "image_brief"), 2048);
+        variant.ImageAlt = Clip(Text(item, "imageAlt") ?? Text(item, "image_alt"), 512);
+
+        return variant;
     }
 
     private static ContentVariant NewVariant(

@@ -106,10 +106,14 @@ public record ContentVariantDto(
     IReadOnlyList<string> Hashtags,
     string? Cta,
     int CharCount,
-    bool IsFavorite)
+    bool IsFavorite,
+    string? Description,
+    string? ImageAlt,
+    Guid? ImageAssetId)
 {
     public static ContentVariantDto From(ContentVariant v) => new(
-        v.Id, v.VariantIndex, v.Angle, v.Body, v.Hashtags, v.Cta, v.CharCount, v.IsFavorite);
+        v.Id, v.VariantIndex, v.Angle, v.Body, v.Hashtags, v.Cta, v.CharCount, v.IsFavorite,
+        v.Description, v.ImageAlt, v.ImageAssetId);
 }
 
 public record ContentJobDto(

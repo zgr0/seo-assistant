@@ -84,6 +84,16 @@ public static class ContentEndpoints
             ContentService content, CancellationToken ct) =>
             Results.Ok(await content.SetFavoriteAsync(variantId, user.TenantId(), req?.IsFavorite, ct)));
 
+        group.MapGet("/assets/{assetId:guid}", async (
+            Guid assetId, ClaimsPrincipal user, ContentService content,
+            HttpContext http, CancellationToken ct) =>
+        {
+            var (bytes, contentType) = await content.GetAssetAsync(assetId, user.TenantId(), ct);
+            // Icerik degismez (yeni uretim yeni kimlik alir) — tarayici onbellegine birak.
+            http.Response.Headers.CacheControl = "private, max-age=86400";
+            return Results.File(bytes, contentType);
+        });
+
         group.MapGet("/export.csv", async (
             ClaimsPrincipal user, ContentService content, string? jobIds, CancellationToken ct) =>
         {

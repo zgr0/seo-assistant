@@ -10,7 +10,9 @@ import {
 } from './session.ts'
 import type {
   AuthResult,
+  BrandProfile,
   ContentJob,
+  ContentVariant,
   CrawlListItem,
   CrawlSummary,
   Dashboard,
@@ -20,8 +22,10 @@ import type {
   Page,
   PageDetail,
   Paged,
+  PlatformProfile,
   Site,
   SiteVitals,
+  SocialKitResponse,
 } from './types.ts'
 
 const base = '/api'
@@ -113,6 +117,23 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   const text = await res.text()
   return (text ? JSON.parse(text) : undefined) as T
+}
+
+/** Ikili govde (gorsel) — yetki basligi gerektigi icin dogrudan <img src> kullanilamaz. */
+async function requestBlob(path: string): Promise<Blob> {
+  let res = await send(path, {})
+
+  if (res.status === 401) {
+    if (await tryRefresh()) {
+      res = await send(path, {})
+    } else {
+      clearSession()
+      throw new ApiError(401, 'Oturum suresi doldu, tekrar giris yapin')
+    }
+  }
+
+  if (!res.ok) throw await toError(res)
+  return res.blob()
 }
 
 function query(params: Record<string, string | number | boolean | undefined>): string {
@@ -234,3 +255,30 @@ export const generateContent = (input: {
 }) => request<ContentJob>('/content/generate', { method: 'POST', body: input })
 
 export const getContentJob = (jobId: string) => request<ContentJob>(`/content/jobs/${jobId}`)
+
+export const listContentJobs = (
+  filter: { type?: string; siteId?: string; status?: string; page?: number; size?: number } = {},
+) => request<Paged<ContentJob>>(`/content/jobs${query({ ...filter })}`)
+
+export const favoriteVariant = (variantId: string, isFavorite: boolean) =>
+  request<ContentVariant>(`/content/variants/${variantId}/favorite`, {
+    method: 'POST',
+    body: { isFavorite },
+  })
+
+/** Uretilen gorselin baytlari; cagiran taraf object URL uretip serbest birakir. */
+export const getAssetBlob = (assetId: string) => requestBlob(`/content/assets/${assetId}`)
+
+// --- sosyal medya paketi ---
+
+export const listPlatformProfiles = () => request<PlatformProfile[]>('/platform-profiles')
+
+export const listBrandProfiles = (siteId?: string) =>
+  request<BrandProfile[]>(`/brand-profiles${query({ siteId })}`)
+
+export const createSocialKit = (input: {
+  siteId: string
+  platformCodes: string[]
+  postCount?: number
+  brandProfileId?: string
+}) => request<SocialKitResponse>('/social/kits', { method: 'POST', body: input })

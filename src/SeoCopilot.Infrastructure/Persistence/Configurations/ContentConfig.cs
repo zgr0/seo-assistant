@@ -65,13 +65,44 @@ internal sealed class ContentVariantConfig : IEntityTypeConfiguration<ContentVar
     {
         b.ToTable("content_variants");
         b.HasKey(x => x.Id);
+
+        // Kimlik uygulamada uretilir (Guid v7). Store-generated birakilirsa EF, dolu anahtarli
+        // yeni varyanti mevcut satir sanip INSERT yerine UPDATE dener.
+        b.Property(x => x.Id).ValueGeneratedNever();
+
         b.Property(x => x.Angle).HasMaxLength(64);
         b.Property(x => x.Body).IsRequired();
         b.Property(x => x.Cta).HasMaxLength(256);
+        b.Property(x => x.Description).HasMaxLength(1024);
+        b.Property(x => x.ImageBrief).HasMaxLength(2048);
+        b.Property(x => x.ImageAlt).HasMaxLength(512);
 
         b.HasIndex(x => new { x.JobId, x.VariantIndex });
 
         b.HasOne(x => x.Job).WithMany(j => j.Variants)
             .HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade);
+
+        // Gorsel once yazilir, sonra varyanta baglanir; varlik silinirse baglanti kopar.
+        b.HasOne(x => x.ImageAsset).WithMany()
+            .HasForeignKey(x => x.ImageAssetId).OnDelete(DeleteBehavior.SetNull);
+    }
+}
+
+internal sealed class ContentAssetConfig : IEntityTypeConfiguration<ContentAsset>
+{
+    public void Configure(EntityTypeBuilder<ContentAsset> b)
+    {
+        b.ToTable("content_assets");
+        b.HasKey(x => x.Id);
+        b.Property(x => x.Id).ValueGeneratedNever();
+        b.Property(x => x.StorageKey).HasMaxLength(512).IsRequired();
+        b.Property(x => x.ContentType).HasMaxLength(64).IsRequired();
+        b.Property(x => x.Model).HasMaxLength(64);
+        b.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
+
+        b.HasIndex(x => x.JobId);
+
+        b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
+        b.HasOne(x => x.Job).WithMany().HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade);
     }
 }

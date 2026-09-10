@@ -38,6 +38,7 @@ public sealed class SeoCopilotDbContext(DbContextOptions<SeoCopilotDbContext> op
     public DbSet<PlatformProfile> PlatformProfiles => Set<PlatformProfile>();
     public DbSet<ContentJob> ContentJobs => Set<ContentJob>();
     public DbSet<ContentVariant> ContentVariants => Set<ContentVariant>();
+    public DbSet<ContentAsset> ContentAssets => Set<ContentAsset>();
 
     // Rapor & sistem
     public DbSet<Report> Reports => Set<Report>();

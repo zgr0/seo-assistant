@@ -6,6 +6,7 @@ using SeoCopilot.Application.Abstractions;
 using SeoCopilot.Application.Common;
 using SeoCopilot.Application.Dtos;
 using SeoCopilot.Application.Services.Content;
+using SeoCopilot.Application.Services.Social;
 using SeoCopilot.Domain.Entities.Content;
 using SeoCopilot.Domain.Enums;
 
@@ -20,10 +21,15 @@ public sealed class ContentService(
     ISiteRepository sites,
     IAnthropicClient llm,
     IContentQueue queue,
+    SocialImageService images,
+    IAssetStorage assets,
     ILogger<ContentService> logger)
 {
     /// <summary>Tek istekte uretilebilecek azami is sayisi (toplu uretim).</summary>
     public const int MaxBatchSize = 50;
+
+    /// <summary>Model yerine sablon kullanildiginda <c>content_jobs.model</c> degeri.</summary>
+    public const string TemplateModel = "template";
 
     /// <summary>Platform kodu zorunlu olan is turleri.</summary>
     private static readonly ContentJobType[] PlatformRequired =
@@ -90,20 +96,50 @@ public sealed class ContentService(
                 ? null
                 : await content.GetPlatformProfileAsync(job.PlatformCode, ct);
 
-            var result = await llm.CompleteDetailedAsync(
-                ContentPrompt.System(job.BrandProfile, platform),
-                ContentPrompt.User(job, job.Page),
-                ct);
+            var withImage = job.Type == ContentJobType.SocialKit;
+            CompletionResult? result = null;
 
-            foreach (var variant in ContentResponseParser.Parse(result.Text))
+            // Sosyal pakette model zorunlu degil: anahtar yoksa ya da cagri duserse
+            // gonderi tarama verisinden sablonla uretilir (bkz. PagePostBuilder).
+            if (llm.IsEnabled || !withImage)
             {
+                try
+                {
+                    result = await llm.CompleteDetailedAsync(
+                        ContentPrompt.System(job.BrandProfile, platform, withImage),
+                        ContentPrompt.User(job, job.Page),
+                        ct);
+                }
+                catch (Exception ex) when (withImage && ex is not OperationCanceledException)
+                {
+                    logger.LogWarning(ex,
+                        "Model çağrısı başarısız — iş {JobId} şablonla üretiliyor", job.Id);
+                }
+            }
+
+            if (result is not null)
+            {
+                foreach (var variant in ContentResponseParser.Parse(result.Text))
+                {
+                    variant.JobId = job.Id;
+                    job.Variants.Add(variant);
+                }
+            }
+
+            if (job.Variants.Count == 0 && withImage && job.Page is not null)
+            {
+                var variant = PagePostBuilder.Build(
+                    job.Page, platform, job.BrandProfile, VariantIndexOf(job));
                 variant.JobId = job.Id;
                 job.Variants.Add(variant);
             }
 
-            job.Model = result.Model;
-            job.TokensIn = result.InputTokens;
-            job.TokensOut = result.OutputTokens;
+            // Gorsel adimi metinden sonra gelir; basarisiz olursa is yine 'done' biter.
+            if (withImage) await images.AttachAsync(job, ct);
+
+            job.Model = result?.Model ?? (withImage ? TemplateModel : null);
+            job.TokensIn = result?.InputTokens ?? 0;
+            job.TokensOut = result?.OutputTokens ?? 0;
             job.Status = ContentJobStatus.Done;
             job.CompletedAt = DateTimeOffset.UtcNow;
             await content.SaveChangesAsync(ct);
@@ -122,7 +158,16 @@ public sealed class ContentService(
             job.Status = ContentJobStatus.Failed;
             job.ErrorMessage = ex.Message;
             job.CompletedAt = DateTimeOffset.UtcNow;
-            await content.SaveChangesAsync(CancellationToken.None);
+
+            try
+            {
+                await content.SaveChangesAsync(CancellationToken.None);
+            }
+            catch (Exception saveEx)
+            {
+                // Hata kaydi da duserse (bozuk degisiklik izleyicisi) asil hatayi gizleme.
+                logger.LogError(saveEx, "Icerik isi {JobId} 'failed' olarak isaretlenemedi", job.Id);
+            }
         }
     }
 
@@ -150,6 +195,19 @@ public sealed class ContentService(
 
         return new PagedResult<ContentJobDto>(
             [.. items.Select(ContentJobDto.From)], total, pageNumber, pageSize);
+    }
+
+    /// <summary>Uretilen gorseli depodan okur; kiraci sinirini uygular.</summary>
+    public async Task<(byte[] Content, string ContentType)> GetAssetAsync(
+        Guid assetId, Guid tenantId, CancellationToken ct = default)
+    {
+        var asset = await content.GetAssetForTenantAsync(assetId, tenantId, ct)
+            ?? throw new NotFoundException($"Görsel {assetId} bulunamadı");
+
+        var bytes = await assets.ReadAsync(asset.StorageKey, ct)
+            ?? throw new NotFoundException($"Görsel dosyası bulunamadı: {asset.StorageKey}");
+
+        return (bytes, asset.ContentType);
     }
 
     /// <summary>Govde verilmezse favoriye ekler; <c>isFavorite:false</c> favoriden cikarir.</summary>
@@ -256,6 +314,17 @@ public sealed class ContentService(
             CreatedBy = userId
         };
     }
+
+    /// <summary>
+    /// Paketteki kacinci gonderi oldugu — sablon acisi (bilgilendirici/merak/satis) buna gore doner.
+    /// <see cref="Social.SocialKitService"/> is acarken <c>postIndex</c> yazar.
+    /// </summary>
+    private static int VariantIndexOf(ContentJob job) =>
+        ContentPrompt.ParseInput(job.Input) is JsonElement input
+        && input.TryGetProperty("postIndex", out var value)
+        && value.TryGetInt32(out var index)
+            ? Math.Max(index, 0)
+            : 0;
 
     /// <summary>Serbest girdi govdesini normalize eder ve varyant sayisini icine yazar.</summary>
     private static string BuildInput(JsonElement? input, int? variantCount)

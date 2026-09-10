@@ -19,7 +19,10 @@ public static class ContentPrompt
     public const int DefaultVariantCount = 3;
     public const int MaxVariantCount = 5;
 
-    public static string System(BrandProfile? brand, PlatformProfile? platform)
+    /// <param name="withImage">
+    /// Sosyal paket uretimi — semaya aciklama ve gorsel brief alanlari eklenir.
+    /// </param>
+    public static string System(BrandProfile? brand, PlatformProfile? platform, bool withImage = false)
     {
         var sb = new StringBuilder();
         sb.AppendLine("Sen Türkçe çalışan bir SEO ve içerik editörüsün.");
@@ -56,8 +59,23 @@ public static class ContentPrompt
 
         sb.AppendLine("# Çıktı biçimi");
         sb.AppendLine("Yalnız geçerli JSON döndür, kod bloğuna sarma, açıklama ekleme. Şema:");
-        sb.AppendLine("""{"variants":[{"angle":"bilgilendirici|merak_uyandiran|satis_odakli","body":"metin","hashtags":["#ornek"],"cta":"eylem cagrisi"}]}""");
-        sb.AppendLine("hashtags ve cta gerekmiyorsa boş bırak.");
+
+        if (withImage)
+        {
+            sb.AppendLine("""{"variants":[{"angle":"bilgilendirici|merak_uyandiran|satis_odakli","body":"gönderi metni","description":"1-2 cümlelik kısa özet","hashtags":["#ornek"],"cta":"eylem çağrısı","imageBrief":"görsel sahnesi (İngilizce)","imageAlt":"görselin Türkçe alternatif metni"}]}""");
+            sb.AppendLine();
+            sb.AppendLine("imageBrief kuralları:");
+            sb.AppendLine("- İngilizce yaz; bir görüntü üretim modeline verilecek.");
+            sb.AppendLine("- Somut sahne tarif et: konu, ortam, ışık, kompozisyon, stil.");
+            sb.AppendLine("- Görselin içine yazı, logo veya filigran isteme — model metni bozuk yazar.");
+            sb.AppendLine("- Marka adını ya da gerçek kişileri tarif etme.");
+            sb.AppendLine("imageAlt Türkçe olsun ve görseli betimlesin; body'yi tekrar etme.");
+        }
+        else
+        {
+            sb.AppendLine("""{"variants":[{"angle":"bilgilendirici|merak_uyandiran|satis_odakli","body":"metin","hashtags":["#ornek"],"cta":"eylem cagrisi"}]}""");
+            sb.AppendLine("hashtags ve cta gerekmiyorsa boş bırak.");
+        }
 
         return sb.ToString();
     }
@@ -147,6 +165,10 @@ public static class ContentPrompt
             "Platforma uygun tek bir sosyal medya gönderisi yaz. İlk satır kanca olsun.",
         ContentJobType.SocialBatch =>
             "Platforma uygun, birbirinden farklı açılarda sosyal medya gönderileri yaz.",
+        ContentJobType.SocialKit =>
+            "Platforma uygun, birbirinden farklı açılarda örnek sosyal medya gönderileri yaz. " +
+            "Her gönderi tek başına yayına hazır olsun: ilk satır kanca, ardından değer, sonunda eylem çağrısı. " +
+            "Her gönderi için ayrıca kısa bir açıklama ve gönderiye eşlik edecek görselin brief'ini ver.",
         ContentJobType.HashtagSet =>
             "İçeriğe uygun hashtag seti öner. Genel + niche karışımı olsun, spam görünmesin.",
         _ => "Sayfa için istenen içeriği üret."

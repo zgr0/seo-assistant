@@ -220,16 +220,35 @@ Skor: severity basina sabit ceza (critical 25, high 15, medium 8, low 3) 100'den
 | `GET /api/content/jobs/{id}` | Is durumu + varyantlar (FE polling) |
 | `GET /api/content/jobs` | Gecmis uretimler; `type`, `platformCode`, `status`, `siteId`, `pageId`, `page`, `size` |
 | `POST /api/content/variants/{id}/favorite` | Govdesiz cagri favoriye ekler; `{isFavorite:false}` cikarir |
+| `GET /api/content/assets/{id}` | Uretilen gorselin baytlari (kiraci sinirli, `private, max-age=86400`) |
 | `GET /api/content/export.csv?jobIds=a,b,c` | Varyantlari CSV olarak indirir (UTF-8 BOM, Excel uyumlu) |
+| `POST /api/social/kits` | `{siteId, platformCodes[], postCount?, brandProfileId?}` → platform x sayfa basina bir is, `202` + `{siteId, crawlId, jobIds[], pageUrls[]}` |
 
 `type` = `title` · `meta_description` · `h1` · `product_description` · `blog_outline` · `fix_advice` ·
-`social_post` · `social_batch` · `hashtag_set`. Son uc tur icin `platformCode` zorunludur.
+`social_post` · `social_batch` · `hashtag_set` · `social_kit`. Sosyal turler icin `platformCode` zorunludur.
 
 Uretim **senkron degildir**: istek `content_jobs` satirini `queued` olarak yazar ve Hangfire'a atar; worker
 marka profilini, platform kurallarini ve (verilmisse) sayfa baglamini prompt'a enjekte edip Anthropic
 Messages API'yi cagirir. Model yaniti `{"variants":[{angle,body,hashtags,cta}]}` semasinda beklenir; sema
 disi yanit bosa gitmesin diye ham metin tek varyant olarak yazilir. `Anthropic:ApiKey` tanimli degilse is
 `failed` olur ve hata mesaji `content_jobs.error_message`'a yazilir.
+
+### Sosyal medya paketi (`social_kit`)
+
+`POST /api/social/kits` sitenin **son tamamlanmis taramasindan** sayfa secer (ana sayfa once; sonra ic link
+sayisi ve metin uzunlugu — [PageSelector](src/SeoCopilot.Application/Services/Social/PageSelector.cs)) ve
+her `platform x sayfa` icin bir `social_kit` isi acar. Platform basina en fazla 5 gonderi, tek istekte en
+fazla 12 is uretilir (maliyet freni).
+
+Bu turde model semasi genisler: `{angle, body, description, hashtags, cta, imageBrief, imageAlt}`.
+`imageBrief` Ingilizce bir sahne tarifidir ve metin uretimi bittikten sonra
+[fluxapi.ai Flux Kontext](https://docs.fluxapi.ai) ile gorsele cevrilir: gonderim `taskId` doner,
+`record-info` ucu `successFlag` 1 olana kadar yoklanir, sonuc URL'i indirilir. Uretilen URL'ler saglayicida
+14 gun sonra silindigi icin baytlar `Assets:Directory` altina, meta veri `content_assets` satirina yazilir
+ve varyanta `image_asset_id` ile baglanir.
+
+Gorsel **zorunlu degildir**: `Flux:ApiKey` tanimsizsa ya da uretim basarisiz olursa gonderi metni yine de
+`done` olur, varyant gorselsiz kalir. Gorselin icine yazi istenmez — model Turkce karakterleri bozuk yazar.
 
 ## Rapor, performans ve pano
 

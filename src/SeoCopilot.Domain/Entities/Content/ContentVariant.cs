@@ -17,4 +17,17 @@ public class ContentVariant
     public string? Cta { get; set; }
     public int CharCount { get; set; }
     public bool IsFavorite { get; set; }
+
+    /// <summary>Gonderi aciklamasi — kisa ozet / gorsel altyazisi.</summary>
+    public string? Description { get; set; }
+
+    /// <summary>Modelin onerdigi gorsel brief'i; goruntu uretiminin istemi.</summary>
+    public string? ImageBrief { get; set; }
+
+    /// <summary>Erisilebilirlik icin gorsel alternatif metni.</summary>
+    public string? ImageAlt { get; set; }
+
+    /// <summary>Uretilen gorsel; uretim kapali ya da basarisizsa null.</summary>
+    public Guid? ImageAssetId { get; set; }
+    public ContentAsset? ImageAsset { get; set; }
 }

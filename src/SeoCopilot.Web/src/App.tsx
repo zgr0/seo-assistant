@@ -6,6 +6,7 @@ import { IssuePage } from './pages/IssuePage.tsx'
 import { LoginPage } from './pages/LoginPage.tsx'
 import { PageDetailPage } from './pages/PageDetailPage.tsx'
 import { SitesPage } from './pages/SitesPage.tsx'
+import { SocialPage } from './pages/SocialPage.tsx'
 import { match, navigate, useRoute } from './router.ts'
 import './App.css'
 
@@ -30,6 +31,9 @@ export default function App() {
         <nav>
           <a href="#/sites" className={route.startsWith('/sites') ? 'active' : undefined}>
             Siteler
+          </a>
+          <a href="#/social" className={route.startsWith('/social') ? 'active' : undefined}>
+            Sosyal medya
           </a>
         </nav>
         <div className="topbar-user">
@@ -61,6 +65,12 @@ function Routes({ route }: { route: string }) {
 
   const page = match('/pages/:pageId', route)
   if (page) return <PageDetailPage pageId={page.pageId} />
+
+  const siteSocial = match('/sites/:siteId/social', route)
+  if (siteSocial) return <SocialPage key={route} siteId={siteSocial.siteId} />
+
+  if (match('/social', route)) return <SocialPage />
+
 
   if (match('/sites', route) || match('/', route)) return <SitesPage />
 

@@ -105,5 +105,13 @@ public sealed class ContentRepository(SeoCopilotDbContext db) : IContentReposito
         db.ContentVariants
             .FirstOrDefaultAsync(v => v.Id == variantId && v.Job!.TenantId == tenantId, ct);
 
+    public async Task AddContentAssetAsync(ContentAsset asset, CancellationToken ct = default) =>
+        await db.ContentAssets.AddAsync(asset, ct);
+
+    public Task<ContentAsset?> GetAssetForTenantAsync(
+        Guid assetId, Guid tenantId, CancellationToken ct = default) =>
+        db.ContentAssets
+            .FirstOrDefaultAsync(a => a.Id == assetId && a.TenantId == tenantId, ct);
+
     public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }

@@ -45,7 +45,10 @@ public enum ContentJobType
     FixAdvice,
     SocialPost,
     SocialBatch,
-    HashtagSet
+    HashtagSet,
+
+    /// <summary>Site geneli sosyal medya paketi: sayfa secimi + gorsel uretimi dahil.</summary>
+    SocialKit
 }
 
 public enum ContentJobStatus { Queued, Running, Done, Failed }

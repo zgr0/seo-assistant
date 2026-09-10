@@ -200,6 +200,10 @@ export interface ContentVariant {
   cta: string | null
   charCount: number
   isFavorite: boolean
+  /** Sosyal paket uretimlerinde dolu. */
+  description: string | null
+  imageAlt: string | null
+  imageAssetId: string | null
 }
 
 export interface ContentJob {
@@ -220,6 +224,39 @@ export interface ContentJob {
   createdAt: string
   completedAt: string | null
   variants: ContentVariant[]
+}
+
+export interface PlatformProfile {
+  code: string
+  displayName: string
+  maxChars: number
+  recommendedChars: number
+  maxHashtags: number
+  supportsLinks: boolean
+  guidanceTr: string
+  isActive: boolean
+}
+
+export interface BrandProfile {
+  id: string
+  siteId: string | null
+  name: string
+  tone: string
+  addressForm: string
+  emojiUsage: string
+  bannedPhrases: string[]
+  defaultHashtags: string[]
+  targetAudience: string | null
+  extraContext: string | null
+  isDefault: boolean
+  createdAt: string
+}
+
+export interface SocialKitResponse {
+  siteId: string
+  crawlId: string
+  jobIds: string[]
+  pageUrls: string[]
 }
 
 export interface IssueFilter {

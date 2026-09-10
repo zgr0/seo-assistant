@@ -101,6 +101,7 @@ app.MapPageEndpoints();
 app.MapIssueEndpoints();
 app.MapBrandProfileEndpoints();
 app.MapContentEndpoints();
+app.MapSocialEndpoints();
 app.MapReportEndpoints();
 app.MapDashboardEndpoints();
 

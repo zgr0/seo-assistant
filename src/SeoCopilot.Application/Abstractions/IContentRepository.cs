@@ -47,5 +47,12 @@ public interface IContentRepository
     Task<ContentVariant?> GetVariantForTenantAsync(
         Guid variantId, Guid tenantId, CancellationToken ct = default);
 
+    // --- uretilen gorseller ---
+
+    Task AddContentAssetAsync(ContentAsset asset, CancellationToken ct = default);
+
+    Task<ContentAsset?> GetAssetForTenantAsync(
+        Guid assetId, Guid tenantId, CancellationToken ct = default);
+
     Task SaveChangesAsync(CancellationToken ct = default);
 }
