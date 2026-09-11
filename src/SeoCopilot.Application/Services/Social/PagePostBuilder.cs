@@ -41,6 +41,13 @@ public static class PagePostBuilder
         var value = Value(page);
         var cta = Cta(page, platform, brand, angle);
 
+        // Baslik gezinme etiketi oldugu icin aciklamadan turediyse govde onu tekrarlamasin.
+        if (value is not null && (value.StartsWith(heading, StringComparison.OrdinalIgnoreCase)
+            || heading.StartsWith(value, StringComparison.OrdinalIgnoreCase)))
+        {
+            value = null;
+        }
+
         var body = Body(angle, heading, value, cta, platform);
         var hashtags = Hashtags(page, brand, platform);
 
@@ -79,28 +86,21 @@ public static class PagePostBuilder
         return body.Length <= limit ? body : Clip(body, limit);
     }
 
+    /// <summary>Kancaya soru eki ancak kisa bir baslikta yakisir.</summary>
+    private const int MaxQuestionHookChars = 45;
+
     /// <summary>Ilk satir kanca — aciya gore degisir, iddia eklemez.</summary>
-    private static string Hook(string angle, string heading) => angle switch
-    {
-        "merak_uyandiran" => $"{heading} — nedir, ne işe yarar?",
-        "satis_odakli" => $"{heading}",
-        _ => heading
-    };
+    private static string Hook(string angle, string heading) =>
+        angle == "merak_uyandiran" && heading.Length <= MaxQuestionHookChars
+            ? $"{heading} — nedir, ne işe yarar?"
+            : heading;
 
-    private static string Heading(Page page)
-    {
-        if (page.H1Texts.FirstOrDefault(h => !string.IsNullOrWhiteSpace(h)) is { } h1)
-            return Tidy(h1);
-
-        if (page.Title is { Length: > 0 } title)
-        {
-            // "Basligim | Marka | Kategori" -> ilk parca en somut olani.
-            var head = title.Split('|', '—', '–')[0].Trim();
-            return Tidy(head.Length > 0 ? head : title);
-        }
-
-        return Tidy(page.Url);
-    }
+    /// <summary>
+    /// Gonderi kancasi. "Hakkimizda" gibi gezinme etiketleri kanca olmaz — sayfanin
+    /// kendi anlatimina inilir (bkz. <see cref="PageHeadline"/>).
+    /// </summary>
+    private static string Heading(Page page) =>
+        PageHeadline.Meaningful(page) is { } headline ? Clip(headline, MaxValueChars) : Tidy(page.Url);
 
     /// <summary>Govdenin degeri: meta description, yoksa ana metnin ilk cumleleri.</summary>
     private static string? Value(Page page)

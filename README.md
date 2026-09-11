@@ -248,7 +248,27 @@ Bu turde model semasi genisler: `{angle, body, description, hashtags, cta, image
 ve varyanta `image_asset_id` ile baglanir.
 
 Gorsel **zorunlu degildir**: `Flux:ApiKey` tanimsizsa ya da uretim basarisiz olursa gonderi metni yine de
-`done` olur, varyant gorselsiz kalir. Gorselin icine yazi istenmez — model Turkce karakterleri bozuk yazar.
+`done` olur, varyant gorselsiz kalir.
+
+### Gorseldeki yazi
+
+Modelden **yazisiz** gorsel istenir (`no text, no letters`) — Turkce glifleri bozuk cizer ve yerlesim
+kontrol edilemez. Baslik ile marka satiri, indirilen ayni baytlar uzerine
+[SkiaSharp](src/SeoCopilot.Infrastructure/Media/SkiaImageComposer.cs) ile basilir; **ikinci bir uretim
+cagrisi yapilmaz**. Her gorsel icin iki satir yazilir:
+
+| `content_assets.kind` | Icerik |
+| --- | --- |
+| `raw` | Modelden gelen yazisiz gorsel |
+| `captioned` | Uzerine yazi basilmis kopya; `source_asset_id` ham surumu isaret eder |
+
+Varyant `image_asset_id` ile yazili surumu gosterir, arayuz "Yazisiz surum" secenegi sunar. Baslik
+degisirse ham surumden yeniden basilabilir — yeni FLUX ucreti dogmaz.
+
+Yazi tipi (Inter, SIL OFL 1.1) derlemeye gomulur: konteynerin sistem fontlarinda `İ`/`ğ`/`ş` eksik olabilir.
+Native katman `SkiaSharp.NativeAssets.Linux.NoDependencies` ile gelir, `libfontconfig1` kurulumu gerekmez.
+Okunurluk icin metnin arkasina gecisli perde cizilir; perde rengi alt bolgenin parlakligina gore secilir.
+`ImageOverlay:Enabled=false` yazi basmayi kapatir, yalniz ham gorsel saklanir.
 
 ## Rapor, performans ve pano
 

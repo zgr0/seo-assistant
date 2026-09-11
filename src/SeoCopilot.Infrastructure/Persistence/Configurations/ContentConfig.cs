@@ -104,5 +104,9 @@ internal sealed class ContentAssetConfig : IEntityTypeConfiguration<ContentAsset
 
         b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne(x => x.Job).WithMany().HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade);
+
+        // Yazili surum ham surumu isaret eder; ham silinirse bag kopar, yazili kalir.
+        b.HasOne(x => x.SourceAsset).WithMany()
+            .HasForeignKey(x => x.SourceAssetId).OnDelete(DeleteBehavior.SetNull);
     }
 }

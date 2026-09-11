@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using SeoCopilot.Application.Abstractions;
 using SeoCopilot.Domain.Entities.Content;
+using SeoCopilot.Domain.Enums;
 
 namespace SeoCopilot.Application.Services.Social;
 
@@ -10,6 +11,7 @@ namespace SeoCopilot.Application.Services.Social;
 /// </summary>
 public sealed class SocialImageService(
     IImageGenerator generator,
+    ISocialImageComposer composer,
     IAssetStorage storage,
     IContentRepository content,
     ILogger<SocialImageService> logger)
@@ -70,22 +72,25 @@ public sealed class SocialImageService(
                     continue;
                 }
 
-                var asset = new ContentAsset
-                {
-                    TenantId = job.TenantId,
-                    JobId = job.Id,
-                    ContentType = image.ContentType,
-                    Width = image.Width,
-                    Height = image.Height,
-                    Bytes = image.Content.Length,
-                    Prompt = prompt,
-                    Model = image.Model
-                };
-                asset.StorageKey = $"{job.TenantId}/{job.Id}/{asset.Id}{Extension(image.ContentType)}";
+                // Ham gorsel her zaman saklanir: yazi begenilmezse ya da baslik degisirse
+                // yeniden uretim (ve yeni FLUX ucreti) gerekmeden yeniden basilabilir.
+                var raw = await SaveAsync(
+                    job, ContentAssetKind.Raw, image.Content, image.ContentType,
+                    image.Width, image.Height, prompt, image.Model, sourceAssetId: null, ct);
 
-                await storage.SaveAsync(asset.StorageKey, image.Content, ct);
-                await content.AddContentAssetAsync(asset, ct);
-                variant.ImageAssetId = asset.Id;
+                variant.ImageAssetId = raw.Id;
+
+                // Ayni baytlar uzerine yazi — ikinci bir uretim cagrisi YOK.
+                var caption = ImageCaptionBuilder.Build(variant, job.Page, job.BrandProfile);
+                if (caption is not null && composer.Compose(image.Content, caption) is { } captioned)
+                {
+                    var withText = await SaveAsync(
+                        job, ContentAssetKind.Captioned, captioned.Content, captioned.ContentType,
+                        captioned.Width, captioned.Height, prompt, image.Model, raw.Id, ct);
+
+                    // Varyant yazili surumu gosterir; ham surum indirme secenegi olarak kalir.
+                    variant.ImageAssetId = withText.Id;
+                }
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -98,6 +103,32 @@ public sealed class SocialImageService(
                     job.Id, variant.VariantIndex);
             }
         }
+    }
+
+    /// <summary>Bayt icerigini depoya, meta veriyi <c>content_assets</c> satirina yazar.</summary>
+    private async Task<ContentAsset> SaveAsync(
+        ContentJob job, ContentAssetKind kind, byte[] bytes, string contentType,
+        int width, int height, string prompt, string model, Guid? sourceAssetId,
+        CancellationToken ct)
+    {
+        var asset = new ContentAsset
+        {
+            TenantId = job.TenantId,
+            JobId = job.Id,
+            Kind = kind,
+            SourceAssetId = sourceAssetId,
+            ContentType = contentType,
+            Width = width,
+            Height = height,
+            Bytes = bytes.Length,
+            Prompt = prompt,
+            Model = model
+        };
+        asset.StorageKey = $"{job.TenantId}/{job.Id}/{asset.Id}{Extension(contentType)}";
+
+        await storage.SaveAsync(asset.StorageKey, bytes, ct);
+        await content.AddContentAssetAsync(asset, ct);
+        return asset;
     }
 
     private static string Extension(string contentType) => contentType switch

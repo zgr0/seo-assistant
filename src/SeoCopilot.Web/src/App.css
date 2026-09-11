@@ -1059,3 +1059,9 @@ button.chip:hover {
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+
+.post-image-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

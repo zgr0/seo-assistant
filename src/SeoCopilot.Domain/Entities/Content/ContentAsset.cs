@@ -1,4 +1,5 @@
 using SeoCopilot.Domain.Entities.Tenancy;
+using SeoCopilot.Domain.Enums;
 
 namespace SeoCopilot.Domain.Entities.Content;
 
@@ -15,6 +16,15 @@ public class ContentAsset
 
     public Guid JobId { get; set; }
     public ContentJob? Job { get; set; }
+
+    public ContentAssetKind Kind { get; set; } = ContentAssetKind.Raw;
+
+    /// <summary>
+    /// Yazili sürümde, uzerine yazi basilan ham gorsel. Ayni FLUX uretiminden turedigi icin
+    /// baslik degisirse yeni uretim yapilmadan yeniden basilabilir.
+    /// </summary>
+    public Guid? SourceAssetId { get; set; }
+    public ContentAsset? SourceAsset { get; set; }
 
     /// <summary>Depo anahtari — kiraci/is/varlik kirilimli goreli yol.</summary>
     public string StorageKey { get; set; } = string.Empty;

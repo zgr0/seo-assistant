@@ -62,7 +62,7 @@ public sealed class ContentRepository(SeoCopilotDbContext db) : IContentReposito
     public Task<ContentJob?> GetContentJobForTenantAsync(
         Guid jobId, Guid tenantId, CancellationToken ct = default) =>
         db.ContentJobs
-            .Include(j => j.Variants)
+            .Include(j => j.Variants).ThenInclude(v => v.ImageAsset)
             .Include(j => j.Page)
             .FirstOrDefaultAsync(j => j.Id == jobId && j.TenantId == tenantId, ct);
 
@@ -71,7 +71,7 @@ public sealed class ContentRepository(SeoCopilotDbContext db) : IContentReposito
         Guid? siteId, Guid? pageId, int skip, int take, CancellationToken ct = default)
     {
         var q = db.ContentJobs
-            .Include(j => j.Variants)
+            .Include(j => j.Variants).ThenInclude(v => v.ImageAsset)
             .Include(j => j.Page)
             .Where(j => j.TenantId == tenantId);
 

@@ -229,6 +229,11 @@ public class SocialKitApiTests(PostgresFixture fixture) : IClassFixture<Postgres
         Assert.Equal(HttpStatusCode.NotFound, res.StatusCode);
     }
 
+    /// <summary>Diger test siniflarinin da kullandigi tarama yardimcisi.</summary>
+    internal static Task<(HttpClient Client, Guid SiteId)> CrawlForTestsAsync(
+        WebApplicationFactory<Program> factory, TestWebSite webSite, string email) =>
+        CrawlAsync(factory, webSite, email);
+
     private static async Task<(HttpClient Client, Guid SiteId)> CrawlAsync(
         WebApplicationFactory<Program> factory, TestWebSite webSite, string email)
     {

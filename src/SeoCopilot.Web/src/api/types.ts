@@ -204,6 +204,8 @@ export interface ContentVariant {
   description: string | null
   imageAlt: string | null
   imageAssetId: string | null
+  /** Yazısız ham görsel — yazılı sürümün kaynağı. */
+  rawImageAssetId: string | null
 }
 
 export interface ContentJob {

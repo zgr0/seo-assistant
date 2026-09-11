@@ -61,15 +61,16 @@ public static class PageBriefBuilder
         return Clip($"{Trim(heading)}. {Trim(context)}", MaxSubjectChars);
     }
 
-    /// <summary>H1 en somut basliktir; yoksa title, o da yoksa og:title.</summary>
+    /// <summary>
+    /// Sayfanin anlamli basligi; gezinme etiketleri ("Hakkimizda") sahne tarif etmez,
+    /// o yuzden elenir ve og:title'a ya da metne inilir.
+    /// </summary>
     private static string? Heading(Page page)
     {
-        if (page.H1Texts.FirstOrDefault(h => !string.IsNullOrWhiteSpace(h)) is { } h1)
-            return h1.Trim();
+        if (PageHeadline.Meaningful(page) is { } headline) return headline;
 
-        if (page.Title is { Length: > 0 } title) return title.Trim();
-
-        return OpenGraph(page, "og:title");
+        var og = OpenGraph(page, "og:title");
+        return og is not null && !PageHeadline.IsNavigational(og) ? og : null;
     }
 
     private static string? Context(Page page)

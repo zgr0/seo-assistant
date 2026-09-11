@@ -315,7 +315,11 @@ function PostCard({
       </div>
 
       {variant.imageAssetId && (
-        <AssetImage assetId={variant.imageAssetId} alt={variant.imageAlt ?? ''} />
+        <AssetImage
+          assetId={variant.imageAssetId}
+          rawAssetId={variant.rawImageAssetId}
+          alt={variant.imageAlt ?? ''}
+        />
       )}
 
       <p className="post-body">{variant.body}</p>
@@ -354,7 +358,16 @@ function PostCard({
 }
 
 /** Gorsel yetkili uctan gelir; blob'u object URL'e cevirip sokulunce serbest birakir. */
-function AssetImage({ assetId, alt }: { assetId: string; alt: string }) {
+function AssetImage({
+  assetId,
+  rawAssetId,
+  alt,
+}: {
+  assetId: string
+  /** Yazisiz surum; yalniz indirme baglantisi icin yuklenir. */
+  rawAssetId?: string | null
+  alt: string
+}) {
   const [url, setUrl] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
 
@@ -384,10 +397,43 @@ function AssetImage({ assetId, alt }: { assetId: string; alt: string }) {
   return (
     <figure className="post-image">
       <img src={url} alt={alt} />
-      <a className="btn btn-ghost btn-sm" href={url} download={`gonderi-${assetId}.jpg`}>
-        Görseli indir
-      </a>
+      <div className="post-image-actions">
+        <a className="btn btn-ghost btn-sm" href={url} download={`gonderi-${assetId}.jpg`}>
+          Görseli indir
+        </a>
+        {rawAssetId && <RawImageLink assetId={rawAssetId} />}
+      </div>
     </figure>
+  )
+}
+
+/** Yazisiz surum: ayni FLUX uretiminden gelir, ek ucret dogurmaz. */
+function RawImageLink({ assetId }: { assetId: string }) {
+  const [url, setUrl] = useState<string | null>(null)
+  const { busy, run } = useAction()
+
+  if (url) {
+    return (
+      <a className="btn btn-ghost btn-sm" href={url} download={`gonderi-${assetId}-yazisiz.jpg`}>
+        Yazısız indir ↓
+      </a>
+    )
+  }
+
+  // Yazisiz surum cogu zaman istenmez — blob yalniz tiklaninca cekilir.
+  return (
+    <button
+      type="button"
+      className="btn btn-ghost btn-sm"
+      disabled={busy}
+      onClick={() =>
+        void run(async () => {
+          setUrl(URL.createObjectURL(await getAssetBlob(assetId)))
+        })
+      }
+    >
+      {busy ? '…' : 'Yazısız sürüm'}
+    </button>
   )
 }
 

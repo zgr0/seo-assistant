@@ -53,4 +53,7 @@ public enum ContentJobType
 
 public enum ContentJobStatus { Queued, Running, Done, Failed }
 
+/// <summary>Ham = modelden gelen gorsel; yazili = uzerine baslik ve marka satiri basilmis kopya.</summary>
+public enum ContentAssetKind { Raw, Captioned }
+
 public enum ReportStatus { Queued, Running, Done, Failed }

@@ -109,11 +109,13 @@ public record ContentVariantDto(
     bool IsFavorite,
     string? Description,
     string? ImageAlt,
-    Guid? ImageAssetId)
+    Guid? ImageAssetId,
+    /// <summary>Yazisiz ham gorsel — yazili surumun kaynagi; indirme secenegi icin.</summary>
+    Guid? RawImageAssetId)
 {
     public static ContentVariantDto From(ContentVariant v) => new(
         v.Id, v.VariantIndex, v.Angle, v.Body, v.Hashtags, v.Cta, v.CharCount, v.IsFavorite,
-        v.Description, v.ImageAlt, v.ImageAssetId);
+        v.Description, v.ImageAlt, v.ImageAssetId, v.ImageAsset?.SourceAssetId);
 }
 
 public record ContentJobDto(

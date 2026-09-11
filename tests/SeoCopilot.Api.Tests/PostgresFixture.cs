@@ -30,12 +30,17 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public Task DisposeAsync() => _container.DisposeAsync().AsTask();
 
-    public WebApplicationFactory<Program> CreateFactory() => new CustomFactory(ConnectionString);
+    /// <param name="configure">Testin servisleri degistirmesi icin (sahte istemciler vb.).</param>
+    public WebApplicationFactory<Program> CreateFactory(Action<IServiceCollection>? configure = null) =>
+        new CustomFactory(ConnectionString, configure);
 
-    private sealed class CustomFactory(string connectionString) : WebApplicationFactory<Program>
+    private sealed class CustomFactory(string connectionString, Action<IServiceCollection>? configure)
+        : WebApplicationFactory<Program>
     {
         protected override IHost CreateHost(IHostBuilder builder)
         {
+            if (configure is not null) builder.ConfigureServices(configure);
+
             builder.ConfigureHostConfiguration(cfg => cfg.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Postgres"] = connectionString,

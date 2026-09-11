@@ -5,6 +5,7 @@ using SeoCopilot.Application.Abstractions;
 using SeoCopilot.Infrastructure.Auth;
 using SeoCopilot.Infrastructure.Clients;
 using SeoCopilot.Infrastructure.Email;
+using SeoCopilot.Infrastructure.Media;
 using SeoCopilot.Infrastructure.Persistence;
 using SeoCopilot.Infrastructure.Reporting;
 using SeoCopilot.Infrastructure.Storage;
@@ -31,6 +32,9 @@ public static class DependencyInjection
 
         services.Configure<AssetStorageOptions>(config.GetSection(AssetStorageOptions.Section));
         services.AddSingleton<IAssetStorage, FileAssetStorage>();
+
+        services.Configure<ImageOverlayOptions>(config.GetSection(ImageOverlayOptions.Section));
+        services.AddSingleton<ISocialImageComposer, SkiaImageComposer>();
 
         services.Configure<JwtOptions>(config.GetSection(JwtOptions.Section));
         services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
