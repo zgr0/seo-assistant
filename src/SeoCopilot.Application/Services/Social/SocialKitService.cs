@@ -20,7 +20,7 @@ public sealed class SocialKitService(
     /// <summary>Platform basina uretilecek azami gonderi (= secilecek sayfa) sayisi.</summary>
     public const int MaxPostCount = 5;
 
-    public const int DefaultPostCount = 3;
+    public const int DefaultPostCount = 1;
 
     /// <summary>Tek istekte acilabilecek azami is — maliyet freni.</summary>
     public const int MaxJobsPerRequest = 12;
@@ -65,7 +65,7 @@ public sealed class SocialKitService(
             throw new InvalidOperationException("Son tarama tamamlanmadı — bitmesini bekleyin");
 
         var pages = await sites.GetPagesAsync(crawl.Id, 0, PageScanLimit, ct);
-        var selected = PageSelector.Select(pages, postCount);
+        var selected = PageSelector.SelectWithKinds(pages, postCount);
         if (selected.Count == 0)
         {
             throw new InvalidOperationException(
@@ -78,7 +78,7 @@ public sealed class SocialKitService(
         {
             for (var index = 0; index < selected.Count; index++)
             {
-                var page = selected[index];
+                var (page, kind) = selected[index];
                 jobs.Add(new ContentJob
                 {
                     TenantId = tenantId,
@@ -88,8 +88,14 @@ public sealed class SocialKitService(
                     Type = ContentJobType.SocialKit,
                     PlatformCode = code,
                     // Sayfa basina tek gonderi; cesitlilik sayfalardan gelir.
-                    // postIndex sablon uretiminde acinin donmesini saglar.
-                    Input = new JsonObject { ["variantCount"] = 1, ["postIndex"] = index }.ToJsonString(),
+                    // postIndex sablon acisini dondurur; pageKind site butunune gore verilmis
+                    // turdur — worker sayfayi tek basina yeniden siniflamaz.
+                    Input = new JsonObject
+                    {
+                        ["variantCount"] = 1,
+                        ["postIndex"] = index,
+                        ["pageKind"] = kind.ToString().ToLowerInvariant()
+                    }.ToJsonString(),
                     Status = ContentJobStatus.Queued,
                     CreatedBy = userId
                 });
@@ -107,7 +113,7 @@ public sealed class SocialKitService(
             request.SiteId,
             crawl.Id,
             [.. jobs.Select(j => j.Id)],
-            [.. selected.Select(p => p.Url)]);
+            [.. selected.Select(p => p.Page.Url)]);
     }
 
     private static List<string> NormalizePlatforms(List<string>? codes)

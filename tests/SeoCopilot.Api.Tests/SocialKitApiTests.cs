@@ -131,7 +131,26 @@ public class SocialKitApiTests(PostgresFixture fixture) : IClassFixture<Postgres
     };
 
     [Fact]
-    public async Task Kit_selects_the_home_page_first()
+    public async Task Kit_without_a_post_count_produces_one_post_per_platform()
+    {
+        await using var factory = fixture.CreateFactory();
+        await using var webSite = await TestWebSite.StartAsync();
+        var (client, siteId) = await CrawlAsync(factory, webSite, "social-kit-default@example.com");
+
+        var res = await client.PostAsJsonAsync("/api/social/kits", new
+        {
+            siteId,
+            platformCodes = new[] { "instagram", "linkedin" }
+        });
+
+        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(2, body.GetProperty("jobIds").GetArrayLength());
+        Assert.Equal(1, body.GetProperty("pageUrls").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task Kit_prefers_article_pages_over_the_home_page()
     {
         await using var factory = fixture.CreateFactory();
         await using var webSite = await TestWebSite.StartAsync();
@@ -141,11 +160,18 @@ public class SocialKitApiTests(PostgresFixture fixture) : IClassFixture<Postgres
         {
             siteId,
             platformCodes = new[] { "linkedin" },
-            postCount = 1
+            postCount = 3
         });
 
-        var body = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal($"{webSite.BaseUrl}/", body.GetProperty("pageUrls")[0].GetString());
+        var urls = (await res.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("pageUrls").EnumerateArray().Select(u => u.GetString()).ToList();
+
+        // Test sitesinde /a ve /b "@type: Article" tasir; ana sayfa "WebSite".
+        // Yazilar once gelir, tukenince ana sayfaya donulur.
+        Assert.Equal(
+            new[] { $"{webSite.BaseUrl}/a", $"{webSite.BaseUrl}/b" }.Order(),
+            urls.Take(2).Order());
+        Assert.Equal($"{webSite.BaseUrl}/", urls[2]);
     }
 
     [Fact]

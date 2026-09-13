@@ -129,7 +129,8 @@ public sealed class ContentService(
             if (job.Variants.Count == 0 && withImage && job.Page is not null)
             {
                 var variant = PagePostBuilder.Build(
-                    job.Page, platform, job.BrandProfile, VariantIndexOf(job));
+                    job.Page, platform, job.BrandProfile, VariantIndexOf(job),
+                    ContentPrompt.PageKindOf(ContentPrompt.ParseInput(job.Input), job.Page));
                 variant.JobId = job.Id;
                 job.Variants.Add(variant);
             }

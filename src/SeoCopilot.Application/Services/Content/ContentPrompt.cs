@@ -94,6 +94,13 @@ public static class ContentPrompt
         {
             sb.AppendLine("# Sayfa bağlamı");
             sb.AppendLine($"- URL: {page.Url}");
+
+            // Haber/blog yazisinda model satis diline kaymasin.
+            if (PageKindOf(input, page) == Social.PageKind.Article)
+            {
+                sb.AppendLine("- Sayfa türü: haber/blog yazısı. Gönderi yazının ana fikrini aktarsın, " +
+                    "satış dili ve teklif çağrısı kullanma; eylem çağrısı yazıyı okumaya yönlendirsin.");
+            }
             if (page.Title is { Length: > 0 }) sb.AppendLine($"- Mevcut title: {page.Title}");
             if (page.MetaDescription is { Length: > 0 })
                 sb.AppendLine($"- Mevcut meta description: {page.MetaDescription}");
@@ -117,6 +124,18 @@ public static class ContentPrompt
 
         return sb.ToString();
     }
+
+    /// <summary>
+    /// Sosyal paket isinde secici site butunune bakip turu <c>pageKind</c> olarak yazar; o
+    /// varsa onu kullan. Yoksa (tekil isler) sayfa tek basina siniflanir.
+    /// </summary>
+    public static Social.PageKind PageKindOf(JsonElement? input, Page page) =>
+        input is JsonElement el
+        && el.ValueKind == JsonValueKind.Object
+        && el.TryGetProperty("pageKind", out var value)
+        && Common.EnumText.TryParse<Social.PageKind>(value.GetString(), out var kind)
+            ? kind
+            : Social.PageClassifier.Classify(page);
 
     public static int VariantCount(JsonElement? input) =>
         input is JsonElement el

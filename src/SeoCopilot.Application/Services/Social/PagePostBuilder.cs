@@ -26,6 +26,9 @@ public static class PagePostBuilder
     /// <summary>Varyant sirasina gore donen aci — ayni siteden gelen gonderiler benzemesin.</summary>
     private static readonly string[] Angles = ["bilgilendirici", "merak_uyandiran", "satis_odakli"];
 
+    /// <summary>Haber/blog yazisinda satis acisi yakismaz — yazinin fikri aktarilir.</summary>
+    private static readonly string[] ArticleAngles = ["bilgilendirici", "merak_uyandiran"];
+
     /// <summary>Turkce harfleri hashtag icin ASCII karsiligina cevirir.</summary>
     private static readonly Dictionary<char, char> AsciiMap = new()
     {
@@ -33,13 +36,20 @@ public static class PagePostBuilder
     };
 
     /// <param name="index">Varyant sirasi — aci ve sablon secimini belirler.</param>
+    /// <param name="kind">
+    /// Site butununu goren secicinin verdigi tur. Verilmezse sayfa tek basina siniflanir —
+    /// her sayfaya og:type=article basan sitelerde bu yaniltabilir.
+    /// </param>
     public static ContentVariant Build(
-        Page page, PlatformProfile? platform, BrandProfile? brand, int index)
+        Page page, PlatformProfile? platform, BrandProfile? brand, int index, PageKind? kind = null)
     {
-        var angle = Angles[index % Angles.Length];
+        var article = (kind ?? PageClassifier.Classify(page)) == PageKind.Article;
+        var angles = article ? ArticleAngles : Angles;
+        var angle = angles[index % angles.Length];
+
         var heading = Heading(page);
         var value = Value(page);
-        var cta = Cta(page, platform, brand, angle);
+        var cta = Cta(page, platform, brand, angle, article);
 
         // Baslik gezinme etiketi oldugu icin aciklamadan turediyse govde onu tekrarlamasin.
         if (value is not null && (value.StartsWith(heading, StringComparison.OrdinalIgnoreCase)
@@ -119,14 +129,18 @@ public static class PagePostBuilder
         return sentences.Count == 0 ? null : Clip(string.Join(". ", sentences) + ".", MaxValueChars);
     }
 
-    private static string Cta(Page page, PlatformProfile? platform, BrandProfile? brand, string angle)
+    private static string Cta(
+        Page page, PlatformProfile? platform, BrandProfile? brand, string angle, bool article)
     {
         var formal = brand?.AddressForm != AddressForm.Sen;
 
-        var verb = angle switch
+        var verb = (article, angle) switch
         {
-            "satis_odakli" => formal ? "Teklif alın" : "Teklif al",
-            "merak_uyandiran" => formal ? "Detayları inceleyin" : "Detayları incele",
+            // Yazida eylem okumaktir; teklif/inceleme cagrisi haberin tonuna uymaz.
+            (true, "merak_uyandiran") => "Devamı yazıda",
+            (true, _) => formal ? "Yazının tamamını okuyun" : "Yazının tamamını oku",
+            (_, "satis_odakli") => formal ? "Teklif alın" : "Teklif al",
+            (_, "merak_uyandiran") => formal ? "Detayları inceleyin" : "Detayları incele",
             _ => formal ? "Ayrıntılar için sayfamıza göz atın" : "Ayrıntılar için sayfamıza göz at"
         };
 

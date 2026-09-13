@@ -113,7 +113,7 @@ function KitForm({
   const [selected, setSelected] = useState<string[]>(() =>
     platforms.length > 0 ? [platforms[0].code] : [],
   )
-  const [postCount, setPostCount] = useState(3)
+  const [postCount, setPostCount] = useState(1)
   const [brandProfileId, setBrandProfileId] = useState('')
   const { busy, error, run } = useAction()
 
