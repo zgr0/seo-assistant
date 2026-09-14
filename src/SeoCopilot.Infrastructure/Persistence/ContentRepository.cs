@@ -113,5 +113,30 @@ public sealed class ContentRepository(SeoCopilotDbContext db) : IContentReposito
         db.ContentAssets
             .FirstOrDefaultAsync(a => a.Id == assetId && a.TenantId == tenantId, ct);
 
+    public async Task<(IReadOnlyList<ContentAsset> Items, int Total)> ListDisplayAssetsAsync(
+        Guid tenantId, Guid? siteId, int skip, int take, CancellationToken ct = default)
+    {
+        var q = db.ContentAssets.Where(a => a.TenantId == tenantId);
+
+        if (siteId is Guid site) q = q.Where(a => a.Job!.SiteId == site);
+
+        // Yazili kopyasi olan ham gorsel ayrica listelenmez — kopya zaten onu isaret eder.
+        q = q.Where(a => a.Kind == ContentAssetKind.Captioned
+            || !db.ContentAssets.Any(c => c.SourceAssetId == a.Id));
+
+        var total = await q.CountAsync(ct);
+        var items = await q
+            .Include(a => a.Job!).ThenInclude(j => j.Page)
+            .Include(a => a.Job!).ThenInclude(j => j.Variants)
+            .OrderByDescending(a => a.CreatedAt)
+            .ThenByDescending(a => a.Id)
+            .Skip(skip)
+            .Take(take)
+            .AsSplitQuery()
+            .ToListAsync(ct);
+
+        return (items, total);
+    }
+
     public Task SaveChangesAsync(CancellationToken ct = default) => db.SaveChangesAsync(ct);
 }

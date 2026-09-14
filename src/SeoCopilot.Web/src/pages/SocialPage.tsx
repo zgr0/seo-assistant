@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   createSocialKit,
   favoriteVariant,
   getAssetBlob,
   getContentJob,
   listBrandProfiles,
+  listContentAssets,
   listContentJobs,
   listPlatformProfiles,
   listSites,
 } from '../api/client.ts'
-import type { ContentJob, ContentVariant, PlatformProfile } from '../api/types.ts'
+import type { ContentAsset, ContentJob, ContentVariant, PlatformProfile } from '../api/types.ts'
+import { timeAgo } from '../components/format.ts'
 import { Card, Empty, ErrorBox, Field, Spinner } from '../components/ui.tsx'
 import { useAction, useAsync } from '../hooks/useAsync.ts'
 
@@ -27,16 +29,24 @@ export function SocialPage({ siteId }: { siteId?: string }) {
   // Kullanici secmediyse ilk site — turetilir, state'e yazilmaz.
   const selectedSite = chosenSite || sites.data?.[0]?.id || ''
 
+  // Yeni paketin tum isleri bitti mi — gecmis ve galeri o an tazelenir.
+  const doneCount = polled.filter((j) => j.status === 'Done' || j.status === 'Failed').length
+  const generating = jobIds.length > 0 && doneCount < jobIds.length
+
   // Sayfa yenilendiginde onceki uretimler kaybolmasin — sitenin gecmis paketleri.
   const history = useAsync(
     () =>
       selectedSite
         ? listContentJobs({ type: 'social_kit', siteId: selectedSite, size: 12 })
         : Promise.resolve(null),
-    [selectedSite],
+    [selectedSite, generating],
   )
 
-  const shown = polled.length > 0 ? polled : (history.data?.items ?? [])
+  // Yeni isler ustte, gecmis altta; ayni is iki kez gosterilmez.
+  const shown = useMemo(() => {
+    const fresh = new Set(polled.map((j) => j.id))
+    return [...polled, ...(history.data?.items ?? []).filter((j) => !fresh.has(j.id))]
+  }, [polled, history.data])
 
   return (
     <div className="page">
@@ -82,15 +92,23 @@ export function SocialPage({ siteId }: { siteId?: string }) {
       {shown.length > 0 && (
         <Results
           jobs={shown}
-          expected={jobIds.length > 0 ? jobIds.length : shown.length}
+          progress={jobIds.length > 0 ? { done: doneCount, expected: jobIds.length } : null}
           pageUrls={pageUrls}
           platforms={platforms.data ?? []}
-          historic={jobIds.length === 0}
         />
       )}
 
       {!history.loading && shown.length === 0 && selectedSite && (
         <Empty>Bu site için henüz gönderi üretilmedi.</Empty>
+      )}
+
+      {selectedSite && (
+        // Anahtar: site degisince ya da uretim bitince galeri sifirdan yuklenir.
+        <Gallery
+          key={`${selectedSite}:${generating ? 'uretiliyor' : jobIds.join(',')}`}
+          siteId={selectedSite}
+          platforms={platforms.data ?? []}
+        />
       )}
     </div>
   )
@@ -212,31 +230,28 @@ function KitForm({
 
 function Results({
   jobs,
-  expected,
+  progress,
   pageUrls,
   platforms,
-  historic,
 }: {
   jobs: ContentJob[]
-  expected: number
+  /** Bu oturumda baslatilan paketin ilerlemesi; yalniz gecmis gosteriliyorsa null. */
+  progress: { done: number; expected: number } | null
   pageUrls: string[]
   platforms: PlatformProfile[]
-  /** Gecmisten yuklendi — ilerleme gostergesi gosterilmez. */
-  historic?: boolean
 }) {
-  const done = jobs.filter((j) => j.status === 'Done' || j.status === 'Failed').length
-  const running = !historic && done < expected
+  const running = progress !== null && progress.done < progress.expected
 
   return (
     <section className="kit-results">
       <div className="kit-progress">
         {running ? (
-          <Spinner label={`Üretiliyor… ${done}/${expected}`} />
+          <Spinner label={`Üretiliyor… ${progress.done}/${progress.expected}`} />
         ) : (
           <p className="muted">
-            {historic
-              ? `Önceki üretimler · ${jobs.length} gönderi`
-              : `${expected} iş tamamlandı · kaynak sayfalar: ${pageUrls.length}`}
+            {progress
+              ? `${progress.expected} iş tamamlandı · kaynak sayfalar: ${pageUrls.length} · toplam ${jobs.length} gönderi`
+              : `Önceki üretimler · ${jobs.length} gönderi`}
           </p>
         )}
       </div>
@@ -368,28 +383,7 @@ function AssetImage({
   rawAssetId?: string | null
   alt: string
 }) {
-  const [url, setUrl] = useState<string | null>(null)
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    let active = true
-    let objectUrl: string | null = null
-
-    getAssetBlob(assetId)
-      .then((blob) => {
-        if (!active) return
-        objectUrl = URL.createObjectURL(blob)
-        setUrl(objectUrl)
-      })
-      .catch(() => {
-        if (active) setFailed(true)
-      })
-
-    return () => {
-      active = false
-      if (objectUrl) URL.revokeObjectURL(objectUrl)
-    }
-  }, [assetId])
+  const { url, failed } = useAssetUrl(assetId, true)
 
   if (failed) return null
   if (!url) return <div className="post-image post-image-loading" />
@@ -435,6 +429,179 @@ function RawImageLink({ assetId }: { assetId: string }) {
       {busy ? '…' : 'Yazısız sürüm'}
     </button>
   )
+}
+
+/**
+ * Yetkili uctan gorsel baytlarini cekip object URL'e cevirir; sokulunce serbest birakir.
+ * <img src> dogrudan kullanilamaz — istek Bearer basligi ister.
+ */
+function useAssetUrl(assetId: string, enabled: boolean) {
+  const [state, setState] = useState<{ id: string; url: string | null; failed: boolean }>({
+    id: assetId,
+    url: null,
+    failed: false,
+  })
+
+  useEffect(() => {
+    if (!enabled) return
+
+    let active = true
+    let objectUrl: string | null = null
+
+    getAssetBlob(assetId)
+      .then((blob) => {
+        if (!active) return
+        objectUrl = URL.createObjectURL(blob)
+        setState({ id: assetId, url: objectUrl, failed: false })
+      })
+      .catch(() => {
+        if (active) setState({ id: assetId, url: null, failed: true })
+      })
+
+    return () => {
+      active = false
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [assetId, enabled])
+
+  // Kimlik degistiyse onceki gorselin URL'i gosterilmesin.
+  return state.id === assetId ? state : { url: null, failed: false }
+}
+
+/** Galeri sayfa boyutu — her kucuk resim ayri bir istek oldugu icin olculu tutulur. */
+const GalleryPageSize = 12
+
+/**
+ * Sitede daha once uretilen gorseller. Her gorsel bir kez listelenir: yazili surum varsa o,
+ * yoksa ham gorsel. Kucuk resimler ekrana girince yuklenir.
+ */
+function Gallery({ siteId, platforms }: { siteId: string; platforms: PlatformProfile[] }) {
+  const first = useAsync(() => listContentAssets({ siteId, size: GalleryPageSize }), [siteId])
+  const [more, setMore] = useState<ContentAsset[]>([])
+  const [page, setPage] = useState(1)
+  const { busy, error, run } = useAction()
+
+  const items = [...(first.data?.items ?? []), ...more]
+  const total = first.data?.total ?? 0
+
+  const loadMore = () =>
+    void run(async () => {
+      const next = await listContentAssets({ siteId, page: page + 1, size: GalleryPageSize })
+      setMore((prev) => [...prev, ...next.items])
+      setPage((p) => p + 1)
+    })
+
+  if (first.loading && !first.data) return <Spinner label="Görseller yükleniyor" />
+  if (first.error) return <ErrorBox message={first.error} onRetry={first.reload} />
+  if (total === 0) return null
+
+  return (
+    <section className="gallery">
+      <h2 className="gallery-title">
+        Önceki görseller <span className="muted">· {total}</span>
+      </h2>
+
+      <div className="gallery-grid">
+        {items.map((asset) => (
+          <GalleryItem
+            key={asset.id}
+            asset={asset}
+            platform={platforms.find((p) => p.code === asset.platformCode)}
+          />
+        ))}
+      </div>
+
+      {error && <p className="form-error">{error}</p>}
+
+      {items.length < total && (
+        <button type="button" className="btn btn-ghost" onClick={loadMore} disabled={busy}>
+          {busy ? 'Yükleniyor…' : `Daha fazla göster (${total - items.length})`}
+        </button>
+      )}
+    </section>
+  )
+}
+
+function GalleryItem({ asset, platform }: { asset: ContentAsset; platform?: PlatformProfile }) {
+  const ref = useRef<HTMLElement>(null)
+  const visible = useInView(ref)
+  const { url, failed } = useAssetUrl(asset.id, visible)
+
+  const path = asset.pageUrl ? pathOf(asset.pageUrl) : null
+
+  return (
+    <figure ref={ref} className="gallery-item">
+      {url ? (
+        <a href={url} target="_blank" rel="noreferrer" title="Tam boyutta aç">
+          {/* loading="lazy" yok: baytlar zaten gorunur olunca cekiliyor, ikinci erteleme gereksiz. */}
+          <img className="gallery-thumb" src={url} alt={asset.alt ?? ''} />
+        </a>
+      ) : (
+        <div className={`gallery-thumb ${failed ? 'gallery-thumb-failed' : 'post-image-loading'}`}>
+          {failed && <span className="muted">Görsel açılamadı</span>}
+        </div>
+      )}
+
+      <figcaption className="gallery-meta">
+        <div className="gallery-tags">
+          {platform && <span className="badge">{platform.displayName}</span>}
+          {asset.kind === 'Raw' && <span className="badge">yazısız</span>}
+          <span className="muted">{timeAgo(asset.createdAt)}</span>
+        </div>
+
+        {asset.pageUrl && path && (
+          <a className="post-source muted" href={asset.pageUrl} target="_blank" rel="noreferrer">
+            {path}
+          </a>
+        )}
+
+        {url && (
+          <div className="post-image-actions">
+            <a className="btn btn-ghost btn-sm" href={url} download={`gorsel-${asset.id}.jpg`}>
+              İndir
+            </a>
+            {asset.rawAssetId && <RawImageLink assetId={asset.rawAssetId} />}
+          </div>
+        )}
+      </figcaption>
+    </figure>
+  )
+}
+
+/** Oge bir kez gorunur olunca true doner ve oyle kalir — gorsel yeniden cekilmez. */
+function useInView(ref: React.RefObject<HTMLElement | null>) {
+  const [inView, setInView] = useState(false)
+  // Ortam desteklemiyorsa (eski tarayici, test) gozlem yapilmaz, hemen yuklenir.
+  const supported = typeof IntersectionObserver !== 'undefined'
+
+  useEffect(() => {
+    const element = ref.current
+    if (!element || inView || !supported) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setInView(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '200px' },
+    )
+
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [ref, inView, supported])
+
+  return inView || !supported
+}
+
+function pathOf(url: string): string {
+  try {
+    const { pathname } = new URL(url)
+    return pathname === '/' ? 'Ana sayfa' : decodeURIComponent(pathname)
+  } catch {
+    return url
+  }
 }
 
 /**

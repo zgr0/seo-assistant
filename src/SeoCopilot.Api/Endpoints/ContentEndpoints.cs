@@ -84,6 +84,12 @@ public static class ContentEndpoints
             ContentService content, CancellationToken ct) =>
             Results.Ok(await content.SetFavoriteAsync(variantId, user.TenantId(), req?.IsFavorite, ct)));
 
+        group.MapGet("/assets", async (
+            ClaimsPrincipal user, ContentService content,
+            Guid? siteId, int? page, int? size, CancellationToken ct) =>
+            Results.Ok(await content.ListAssetsAsync(
+                user.TenantId(), siteId, page ?? 1, size ?? 24, ct)));
+
         group.MapGet("/assets/{assetId:guid}", async (
             Guid assetId, ClaimsPrincipal user, ContentService content,
             HttpContext http, CancellationToken ct) =>

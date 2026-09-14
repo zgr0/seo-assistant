@@ -198,6 +198,18 @@ public sealed class ContentService(
             [.. items.Select(ContentJobDto.From)], total, pageNumber, pageSize);
     }
 
+    /// <summary>Daha once uretilen gorseller — galeri; yeniden eskiye, sayfalanmis.</summary>
+    public async Task<PagedResult<ContentAssetDto>> ListAssetsAsync(
+        Guid tenantId, Guid? siteId, int page, int size, CancellationToken ct = default)
+    {
+        var (pageNumber, pageSize) = Paging.Normalize(page, size);
+        var (items, total) = await content.ListDisplayAssetsAsync(
+            tenantId, siteId, (pageNumber - 1) * pageSize, pageSize, ct);
+
+        return new PagedResult<ContentAssetDto>(
+            [.. items.Select(ContentAssetDto.From)], total, pageNumber, pageSize);
+    }
+
     /// <summary>Uretilen gorseli depodan okur; kiraci sinirini uygular.</summary>
     public async Task<(byte[] Content, string ContentType)> GetAssetAsync(
         Guid assetId, Guid tenantId, CancellationToken ct = default)

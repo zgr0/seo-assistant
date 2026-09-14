@@ -228,6 +228,23 @@ export interface ContentJob {
   variants: ContentVariant[]
 }
 
+/** Galeri satırı — yazılı görsel ya da yazılı kopyası olmayan ham görsel. */
+export interface ContentAsset {
+  id: string
+  kind: 'Raw' | 'Captioned'
+  /** Yazısız kaynak görsel; ham görselde null. */
+  rawAssetId: string | null
+  width: number
+  height: number
+  bytes: number
+  jobId: string
+  siteId: string | null
+  platformCode: string | null
+  pageUrl: string | null
+  alt: string | null
+  createdAt: string
+}
+
 export interface PlatformProfile {
   code: string
   displayName: string

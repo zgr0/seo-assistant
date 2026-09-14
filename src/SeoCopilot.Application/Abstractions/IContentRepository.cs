@@ -54,5 +54,12 @@ public interface IContentRepository
     Task<ContentAsset?> GetAssetForTenantAsync(
         Guid assetId, Guid tenantId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Galeride gosterilecek gorseller, yeniden eskiye: yazili surumler ve yazili kopyasi
+    /// olmayan ham gorseller (bir gorsel iki kez listelenmez). Is ve sayfa dahil.
+    /// </summary>
+    Task<(IReadOnlyList<ContentAsset> Items, int Total)> ListDisplayAssetsAsync(
+        Guid tenantId, Guid? siteId, int skip, int take, CancellationToken ct = default);
+
     Task SaveChangesAsync(CancellationToken ct = default);
 }

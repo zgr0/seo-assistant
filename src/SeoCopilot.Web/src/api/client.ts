@@ -11,6 +11,7 @@ import {
 import type {
   AuthResult,
   BrandProfile,
+  ContentAsset,
   ContentJob,
   ContentVariant,
   CrawlListItem,
@@ -265,6 +266,10 @@ export const favoriteVariant = (variantId: string, isFavorite: boolean) =>
     method: 'POST',
     body: { isFavorite },
   })
+
+/** Daha once uretilen gorseller, yeniden eskiye. */
+export const listContentAssets = (filter: { siteId?: string; page?: number; size?: number } = {}) =>
+  request<Paged<ContentAsset>>(`/content/assets${query({ ...filter })}`)
 
 /** Uretilen gorselin baytlari; cagiran taraf object URL uretip serbest birakir. */
 export const getAssetBlob = (assetId: string) => requestBlob(`/content/assets/${assetId}`)

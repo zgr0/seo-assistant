@@ -157,5 +157,42 @@ public record ContentJobDto(
         [.. j.Variants.OrderBy(v => v.VariantIndex).Select(ContentVariantDto.From)]);
 }
 
+/// <summary>Galeri satiri — yazili gorsel ya da yazili kopyasi olmayan ham gorsel.</summary>
+/// <param name="RawAssetId">Yazili surumun kaynagi (yazisiz indirme icin); ham gorselde null.</param>
+public record ContentAssetDto(
+    Guid Id,
+    string Kind,
+    Guid? RawAssetId,
+    int Width,
+    int Height,
+    int Bytes,
+    Guid JobId,
+    Guid? SiteId,
+    string? PlatformCode,
+    string? PageUrl,
+    string? Alt,
+    DateTimeOffset CreatedAt)
+{
+    public static ContentAssetDto From(ContentAsset a)
+    {
+        // Varyant yazili surumu, yazi basilamadiysa ham surumu isaret eder.
+        var variant = a.Job?.Variants.FirstOrDefault(v => v.ImageAssetId == a.Id);
+
+        return new ContentAssetDto(
+            a.Id,
+            a.Kind.ToString(),
+            a.SourceAssetId,
+            a.Width,
+            a.Height,
+            a.Bytes,
+            a.JobId,
+            a.Job?.SiteId,
+            a.Job?.PlatformCode,
+            a.Job?.Page?.Url,
+            variant?.ImageAlt,
+            a.CreatedAt);
+    }
+}
+
 /// <summary>Bos govde = favoriye ekle.</summary>
 public record FavoriteVariantRequest(bool? IsFavorite = null);
