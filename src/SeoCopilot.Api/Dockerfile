@@ -59,8 +59,11 @@ RUN apt-get update \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Raporlar (Reports:Directory) buraya yazilir — compose'da volume bagli.
-RUN mkdir -p /app/App_Data/reports && chown -R app:app /app/App_Data
+# Raporlar (Reports:Directory) ve sosyal gonderi gorselleri (Assets:Directory) buraya
+# yazilir — compose'da ikisine de volume bagli. Klasor imajda yoksa Docker bos volume'u
+# root sahipli acar ve `app` yazamaz ("Permission denied"); bu yuzden ikisi de burada
+# `app` sahipli olusturulur, yeni volume sahipligi buradan kopyalar.
+RUN mkdir -p /app/App_Data/reports /app/App_Data/assets && chown -R app:app /app/App_Data
 
 USER app
 EXPOSE 8080

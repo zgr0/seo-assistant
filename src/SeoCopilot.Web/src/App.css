@@ -973,6 +973,46 @@ button.chip:hover {
   font-weight: 600;
 }
 
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+}
+
+.template-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.template-option:hover {
+  border-color: var(--accent);
+}
+
+.template-on {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.template-icon {
+  width: 44px;
+  height: 44px;
+}
+
+.template-label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .kit-progress {
   margin: 16px 0 12px;
 }
@@ -1053,6 +1093,13 @@ button.chip:hover {
   border-top: 1px solid var(--border);
   padding-top: 10px;
   font-size: 13px;
+}
+
+.post-foot-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .post-source {

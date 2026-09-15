@@ -17,6 +17,7 @@ import type {
   CrawlListItem,
   CrawlSummary,
   Dashboard,
+  ImageTemplate,
   Issue,
   IssueFilter,
   IssueGroup,
@@ -261,6 +262,10 @@ export const listContentJobs = (
   filter: { type?: string; siteId?: string; status?: string; page?: number; size?: number } = {},
 ) => request<Paged<ContentJob>>(`/content/jobs${query({ ...filter })}`)
 
+/** Gonderiyi (isi), varyantlarini ve gorsellerini siler. */
+export const deleteContentJob = (jobId: string) =>
+  request<void>(`/content/jobs/${jobId}`, { method: 'DELETE' })
+
 export const favoriteVariant = (variantId: string, isFavorite: boolean) =>
   request<ContentVariant>(`/content/variants/${variantId}/favorite`, {
     method: 'POST',
@@ -286,4 +291,6 @@ export const createSocialKit = (input: {
   platformCodes: string[]
   postCount?: number
   brandProfileId?: string
+  /** Boş ya da verilmezse tüm şablonlar dönüşümlü kullanılır. */
+  imageTemplates?: ImageTemplate[]
 }) => request<SocialKitResponse>('/social/kits', { method: 'POST', body: input })

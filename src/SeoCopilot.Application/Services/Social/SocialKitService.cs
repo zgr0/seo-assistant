@@ -32,6 +32,7 @@ public sealed class SocialKitService(
         CreateSocialKitRequest request, Guid tenantId, Guid userId, CancellationToken ct = default)
     {
         var platformCodes = NormalizePlatforms(request.PlatformCodes);
+        var templates = ImageTemplatePicker.Parse(request.ImageTemplates);
         var postCount = Math.Clamp(request.PostCount ?? DefaultPostCount, 1, MaxPostCount);
 
         if (platformCodes.Count * postCount > MaxJobsPerRequest)
@@ -65,7 +66,11 @@ public sealed class SocialKitService(
             throw new InvalidOperationException("Son tarama tamamlanmadı — bitmesini bekleyin");
 
         var pages = await sites.GetPagesAsync(crawl.Id, 0, PageScanLimit, ct);
-        var selected = PageSelector.SelectWithKinds(pages, postCount);
+
+        // Onceki uretimler: az kullanilan sayfa once secilir, ayni sayfa tekrar gelirse aci kayar.
+        var history = PostHistory.From(
+            await content.ListSocialPostsAsync(tenantId, request.SiteId, PostHistory.MaxRecords, ct));
+        var selected = PageSelector.SelectWithKinds(pages, postCount, page => history.UsageOf(page.Url));
         if (selected.Count == 0)
         {
             throw new InvalidOperationException(
@@ -73,9 +78,14 @@ public sealed class SocialKitService(
                 "sayfaların 200 dönmesi, dizine açık olması ve metin içermesi gerekir");
         }
 
+        // Her sayfada tekrarlanan sablon gorselleri (logo, katalog afisi) site butununden bulunur;
+        // worker yalniz kendi sayfasini gordugu icin adaylar burada hesaplanip ise yazilir.
+        var siteWideImages = PageImageCandidates.SiteWideImages(pages);
+
         var jobs = new List<ContentJob>(platformCodes.Count * selected.Count);
-        foreach (var code in platformCodes)
+        for (var platformIndex = 0; platformIndex < platformCodes.Count; platformIndex++)
         {
+            var code = platformCodes[platformIndex];
             for (var index = 0; index < selected.Count; index++)
             {
                 var (page, kind) = selected[index];
@@ -88,13 +98,22 @@ public sealed class SocialKitService(
                     Type = ContentJobType.SocialKit,
                     PlatformCode = code,
                     // Sayfa basina tek gonderi; cesitlilik sayfalardan gelir.
-                    // postIndex sablon acisini dondurur; pageKind site butunune gore verilmis
-                    // turdur — worker sayfayi tek basina yeniden siniflamaz.
+                    // postIndex sablon acisini ve kalibini dondurur: paketteki sira, sayfanin
+                    // gecmis kullanimi ve platform sirasi eklenir — ayni sayfa tekrar secildiginde
+                    // ya da iki platforma birden yazildiginda ayni metin cikmaz. Worker yine de
+                    // gecmisle karsilastirir (bkz. ContentService). pageKind site butunune gore
+                    // verilmis turdur — worker sayfayi tek basina yeniden siniflamaz.
                     Input = new JsonObject
                     {
                         ["variantCount"] = 1,
-                        ["postIndex"] = index,
-                        ["pageKind"] = kind.ToString().ToLowerInvariant()
+                        ["postIndex"] = index + history.UsageOf(page.Url) + platformIndex,
+                        ["pageUrl"] = page.Url,
+                        ["pageKind"] = kind.ToString().ToLowerInvariant(),
+                        ["imageCandidates"] = new JsonArray(
+                            [.. PageImageCandidates.For(page, siteWideImages).Select(u => (JsonNode)u)]),
+                        // Kullanicinin formda sectigi sablonlar; bossa ayarlardaki liste gecerli.
+                        [ImageTemplatePicker.InputKey] = new JsonArray(
+                            [.. templates.Select(t => (JsonNode)t.ToString())])
                     }.ToJsonString(),
                     Status = ContentJobStatus.Queued,
                     CreatedBy = userId

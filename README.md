@@ -241,14 +241,42 @@ her `platform x sayfa` icin bir `social_kit` isi acar. Platform basina en fazla 
 fazla 12 is uretilir (maliyet freni).
 
 Bu turde model semasi genisler: `{angle, body, description, hashtags, cta, imageBrief, imageAlt}`.
-`imageBrief` Ingilizce bir sahne tarifidir ve metin uretimi bittikten sonra
-[fluxapi.ai Flux Kontext](https://docs.fluxapi.ai) ile gorsele cevrilir: gonderim `taskId` doner,
-`record-info` ucu `successFlag` 1 olana kadar yoklanir, sonuc URL'i indirilir. Uretilen URL'ler saglayicida
-14 gun sonra silindigi icin baytlar `Assets:Directory` altina, meta veri `content_assets` satirina yazilir
-ve varyanta `image_asset_id` ile baglanir.
 
-Gorsel **zorunlu degildir**: `Flux:ApiKey` tanimsizsa ya da uretim basarisiz olursa gonderi metni yine de
-`done` olur, varyant gorselsiz kalir.
+### Gorsel kaynaklari
+
+Gorsel `SocialImages:Sources` sirasiyla aranir; ilk sonuc veren kaynak kullanilir. **Varsayilan
+ucretsizdir** (`["site", "card"]`):
+
+| Kaynak | Icerik | Ucret |
+| --- | --- | --- |
+| `site` | Sayfanin kendi fotografi (`og:image`, sonra govdedeki `<img>`ler), platform oranina ortadan kirpilir: kare 1080x1080, yatay 1200x675 | Yok |
+| `ai` | `imageBrief`'ten [fluxapi.ai Flux Kontext](https://docs.fluxapi.ai) uretimi — `Flux:ApiKey` ister | Kredi |
+| `card` | Alan adindan turetilen renk gecisli marka karti; hic basarisiz olmaz | Yok |
+
+Yapay zekayi acmak icin kaynak sirasina `ai` eklenir (ör. `["ai", "site", "card"]`); anahtar tanimsizsa
+kaynak sessizce atlanir.
+
+**Site fotografi secimi** ([PageImageCandidates](src/SeoCopilot.Application/Services/Social/PageImageCandidates.cs)):
+tarama sayfa basina en fazla 20 gorsel adresi saklar (`pages.image_urls`). Adinda `logo`, `icon`, `flag`
+gibi kaliplar gecen ya da SVG/GIF olan dosyalar elenir; **taranan sayfalarin %30'undan fazlasinda tekrarlanan**
+gorseller (ust bilgi logosu, kenar cubugu afisi — `og:image` her sayfada logo olan siteler dahil) sablona
+ait sayilir. Kalan adaylar sirayla indirilir; kisa kenari 400 pikselden kucuk ya da 3.2:1'den uzun/ince
+(logo seridi) gorseller reddedilip siradakine gecilir. Seffaf PNG'ler acik zemine oturtulur.
+
+`image_urls` kolonu sonradan eklendigi icin **eski taramalarda bos**tur — site fotografi icin siteyi yeniden
+taratmak gerekir, o zamana kadar marka karti kullanilir.
+
+**Ic ag korumasi** ([SiteImageFetcher](src/SeoCopilot.Infrastructure/Media/SiteImageFetcher.cs)): gorsel
+adresi sayfa icerigidir, yani guvenilmez. Baglanti kurulurken cozulen IP ozel ag, geri dongu, link-local
+(bulut meta veri adresi `169.254.169.254` dahil), CGNAT ya da standart disi port ise istek reddedilir.
+Kontrol soket baglantisinda yapildigi icin DNS yeniden baglama ve ic adrese yonlendirme de engellenir.
+Boyut siniri 8 MB, zaman asimi 15 sn. `SiteImages:AllowPrivateNetworks` yalniz testler icindir.
+
+Hangi kaynagin kullanildigi `content_assets.model` alanina (`site-image`, `brand-card` ya da AI model adi)
+ve `prompt` alanina (site fotografinin adresi) yazilir; galeri bunu etiket olarak gosterir.
+
+Gorsel **zorunlu degildir**: hicbir kaynak sonuc vermezse gonderi metni yine de `done` olur, varyant
+gorselsiz kalir.
 
 ### Gorseldeki yazi
 
@@ -267,8 +295,36 @@ degisirse ham surumden yeniden basilabilir — yeni FLUX ucreti dogmaz.
 
 Yazi tipi (Inter, SIL OFL 1.1) derlemeye gomulur: konteynerin sistem fontlarinda `İ`/`ğ`/`ş` eksik olabilir.
 Native katman `SkiaSharp.NativeAssets.Linux.NoDependencies` ile gelir, `libfontconfig1` kurulumu gerekmez.
-Okunurluk icin metnin arkasina gecisli perde cizilir; perde rengi alt bolgenin parlakligina gore secilir.
 `ImageOverlay:Enabled=false` yazi basmayi kapatir, yalniz ham gorsel saklanir.
+
+### Tasarim sablonlari
+
+Yazili surum bir **tasarim sablonuyla** cizilir ([SkiaPostTemplates](src/SeoCopilot.Infrastructure/Media/SkiaPostTemplates.cs)).
+Sablon gonderi sirasiyla (`postIndex`) doner; ard arda gonderiler ayni gorunmez. Fotografli ve fotografsiz
+zeminler ayri havuzdan secilir ([ImageTemplatePicker](src/SeoCopilot.Application/Services/Social/ImageTemplatePicker.cs)):
+
+| Sablon | Zemin | Yerlesim |
+| --- | --- | --- |
+| `Overlay` | Fotograf | Tam ekran fotograf, alt kisimda gecisli perde ve baslik; perde rengi alt bolgenin parlakligina gore |
+| `Split` | Fotograf | Fotograf bir yarida, digerinde renkli panelde baslik + alt metin (yatayda yan yana, karede ust-alt) |
+| `Framed` | Fotograf | Koyu gecisli zeminde yuvarlak koseli, golgeli fotograf; yaninda/altinda metin |
+| `Label` | Fotograf | Tam ekran fotograf, alt kosede beyaz etiket kartinda baslik |
+| `Poster` | Marka karti | Desenli zeminde (nokta, halka ya da serit — alan adindan secilir) buyuk baslik |
+| `Quote` | Marka karti | Sayfa aciklamasi alinti olarak, baslik kaynak satiri olarak; aciklama yoksa `Poster` |
+
+Panel ve vurgu renkleri fotografin baskin tonundan cikarilir; fotograf renksizse (gri, siyah-beyaz) alan
+adindan turetilir — ayni sitenin gorselleri hep ayni renkleri alir. Alt metin varyantin `description`'indan,
+yoksa meta description'dan gelir; basligi tekrar ediyorsa basilmaz. Metin sigmazsa punto kuculur, en sonda
+satir uc noktayla kirpilir. Tum olculer kisa kenara oranlidir.
+
+Sablon **formdan secilir** ("Gorsel sablonu"): `POST /api/social/kits` govdesinde `imageTemplates`
+(ör. `["Split", "Label"]`, buyuk/kucuk harf duyarsiz; bilinmeyen ad 400). Birden fazla secilirse gonderiler
+arasinda donusumlu kullanilir; secim is girdisine yazilir. Yalniz fotografsiz sablon (`Poster`, `Quote`)
+secilirse site fotografi ve AI hic denenmez, zemin marka kartidir. Yalniz fotografli sablon secilip sayfada
+fotograf bulunamazsa secilen sablon marka karti zemininde cizilir.
+
+Istekte sablon yoksa `SocialImages:Templates` gecerlidir (ör. `["Overlay"]` eski tek tip gorunume doner);
+o da bos ise hepsi kullanilir.
 
 ## Rapor, performans ve pano
 

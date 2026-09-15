@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   createSocialKit,
+  deleteContentJob,
   favoriteVariant,
   getAssetBlob,
   getContentJob,
@@ -10,7 +11,13 @@ import {
   listPlatformProfiles,
   listSites,
 } from '../api/client.ts'
-import type { ContentAsset, ContentJob, ContentVariant, PlatformProfile } from '../api/types.ts'
+import type {
+  ContentAsset,
+  ContentJob,
+  ContentVariant,
+  ImageTemplate,
+  PlatformProfile,
+} from '../api/types.ts'
 import { timeAgo } from '../components/format.ts'
 import { Card, Empty, ErrorBox, Field, Spinner } from '../components/ui.tsx'
 import { useAction, useAsync } from '../hooks/useAsync.ts'
@@ -24,6 +31,8 @@ export function SocialPage({ siteId }: { siteId?: string }) {
   const [chosenSite, setChosenSite] = useState(siteId ?? '')
   const [jobIds, setJobIds] = useState<string[]>([])
   const [pageUrls, setPageUrls] = useState<string[]>([])
+  // Silinen isler: gecmis yeniden yuklenene kadar listeden hemen dussun.
+  const [deleted, setDeleted] = useState<string[]>([])
   const polled = usePolledJobs(jobIds)
 
   // Kullanici secmediyse ilk site — turetilir, state'e yazilmaz.
@@ -45,8 +54,11 @@ export function SocialPage({ siteId }: { siteId?: string }) {
   // Yeni isler ustte, gecmis altta; ayni is iki kez gosterilmez.
   const shown = useMemo(() => {
     const fresh = new Set(polled.map((j) => j.id))
-    return [...polled, ...(history.data?.items ?? []).filter((j) => !fresh.has(j.id))]
-  }, [polled, history.data])
+    const gone = new Set(deleted)
+    return [...polled, ...(history.data?.items ?? []).filter((j) => !fresh.has(j.id))].filter(
+      (j) => !gone.has(j.id),
+    )
+  }, [polled, history.data, deleted])
 
   return (
     <div className="page">
@@ -95,6 +107,7 @@ export function SocialPage({ siteId }: { siteId?: string }) {
           progress={jobIds.length > 0 ? { done: doneCount, expected: jobIds.length } : null}
           pageUrls={pageUrls}
           platforms={platforms.data ?? []}
+          onDeleted={(jobId) => setDeleted((prev) => [...prev, jobId])}
         />
       )}
 
@@ -103,9 +116,9 @@ export function SocialPage({ siteId }: { siteId?: string }) {
       )}
 
       {selectedSite && (
-        // Anahtar: site degisince ya da uretim bitince galeri sifirdan yuklenir.
+        // Anahtar: site degisince, uretim bitince ya da gonderi silinince galeri sifirdan yuklenir.
         <Gallery
-          key={`${selectedSite}:${generating ? 'uretiliyor' : jobIds.join(',')}`}
+          key={`${selectedSite}:${generating ? 'uretiliyor' : jobIds.join(',')}:${deleted.length}`}
           siteId={selectedSite}
           platforms={platforms.data ?? []}
         />
@@ -133,6 +146,8 @@ function KitForm({
   )
   const [postCount, setPostCount] = useState(1)
   const [brandProfileId, setBrandProfileId] = useState('')
+  // Bos: tum sablonlar donusumlu.
+  const [templates, setTemplates] = useState<ImageTemplate[]>([])
   const { busy, error, run } = useAction()
 
   // Marka profilleri siteye bagli olabilir — site degisince listeyi tazele.
@@ -155,6 +170,7 @@ function KitForm({
         platformCodes: selected,
         postCount,
         brandProfileId: brandProfileId || undefined,
+        imageTemplates: templates.length > 0 ? templates : undefined,
       })
       onCreated(result)
     })
@@ -214,6 +230,8 @@ function KitForm({
           </div>
         </div>
 
+        <TemplatePicker value={templates} onChange={setTemplates} />
+
         <button
           type="submit"
           className="btn btn-primary"
@@ -228,17 +246,164 @@ function KitForm({
   )
 }
 
+const TemplateOptions: {
+  value: ImageTemplate
+  label: string
+  description: string
+  photo: boolean
+}[] = [
+  { value: 'Overlay', label: 'Perde', description: 'Tam ekran fotoğraf, altta başlık', photo: true },
+  { value: 'Split', label: 'Bölünmüş', description: 'Fotoğraf ve renkli metin paneli', photo: true },
+  { value: 'Framed', label: 'Çerçeve', description: 'Koyu zeminde çerçeveli fotoğraf', photo: true },
+  { value: 'Label', label: 'Etiket', description: 'Fotoğraf üstünde beyaz başlık kartı', photo: true },
+  { value: 'Poster', label: 'Afiş', description: 'Fotoğrafsız, desenli zeminde büyük başlık', photo: false },
+  { value: 'Quote', label: 'Alıntı', description: 'Fotoğrafsız, sayfadan bir cümle alıntı olarak', photo: false },
+]
+
+/**
+ * Gorsel sablonu secimi. Hic secilmezse "Otomatik": sablonlar gonderiler arasinda donusumlu.
+ * Birden fazla secilirse yalniz secilenler donusumlu kullanilir.
+ */
+function TemplatePicker({
+  value,
+  onChange,
+}: {
+  value: ImageTemplate[]
+  onChange: (value: ImageTemplate[]) => void
+}) {
+  const toggle = (template: ImageTemplate) =>
+    onChange(
+      value.includes(template) ? value.filter((t) => t !== template) : [...value, template],
+    )
+
+  const onlyCards = value.length > 0 && value.every((t) => !TemplateOptions.find((o) => o.value === t)?.photo)
+
+  return (
+    <div className="field">
+      <span className="field-label">Görsel şablonu</span>
+      <div className="template-grid">
+        <button
+          type="button"
+          className={`template-option ${value.length === 0 ? 'template-on' : ''}`.trim()}
+          onClick={() => onChange([])}
+          aria-pressed={value.length === 0}
+          title="Şablonlar gönderiler arasında dönüşümlü kullanılır"
+        >
+          <TemplateIcon template="auto" />
+          <span className="template-label">Otomatik</span>
+        </button>
+
+        {TemplateOptions.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            className={`template-option ${value.includes(option.value) ? 'template-on' : ''}`.trim()}
+            onClick={() => toggle(option.value)}
+            aria-pressed={value.includes(option.value)}
+            title={option.description}
+          >
+            <TemplateIcon template={option.value} />
+            <span className="template-label">{option.label}</span>
+          </button>
+        ))}
+      </div>
+      <span className="field-hint">
+        {value.length === 0
+          ? 'Tüm şablonlar gönderiler arasında dönüşümlü kullanılır.'
+          : onlyCards
+            ? 'Yalnız fotoğrafsız şablon seçildi — site fotoğrafı kullanılmaz, marka kartı çizilir.'
+            : 'Birden fazla seçilirse gönderiler arasında dönüşümlü kullanılır. Alıntı, sayfada açıklama yoksa afişe döner.'}
+      </span>
+    </div>
+  )
+}
+
+/** Sablonun kucuk yerlesim cizimi — renkler temadan (currentColor) gelir. */
+function TemplateIcon({ template }: { template: ImageTemplate | 'auto' }) {
+  const photo = { fill: 'currentColor', opacity: 0.28 }
+  const panel = { fill: 'currentColor', opacity: 0.85 }
+  const line = { fill: 'var(--surface)' }
+
+  return (
+    <svg className="template-icon" viewBox="0 0 48 48" aria-hidden="true">
+      {template === 'auto' && (
+        <>
+          <rect x="4" y="4" width="18" height="18" rx="3" style={photo} />
+          <rect x="26" y="4" width="18" height="18" rx="3" style={panel} />
+          <rect x="4" y="26" width="18" height="18" rx="3" style={panel} />
+          <rect x="26" y="26" width="18" height="18" rx="3" style={photo} />
+        </>
+      )}
+      {template === 'Overlay' && (
+        <>
+          <rect x="4" y="4" width="40" height="40" rx="4" style={photo} />
+          <rect x="4" y="28" width="40" height="16" rx="4" style={panel} />
+          <rect x="9" y="33" width="24" height="3" rx="1.5" style={line} />
+          <rect x="9" y="38" width="14" height="2" rx="1" style={line} />
+        </>
+      )}
+      {template === 'Split' && (
+        <>
+          <rect x="4" y="4" width="40" height="22" rx="4" style={photo} />
+          <rect x="4" y="26" width="40" height="18" rx="4" style={panel} />
+          <rect x="9" y="31" width="26" height="3" rx="1.5" style={line} />
+          <rect x="9" y="37" width="18" height="2" rx="1" style={line} />
+        </>
+      )}
+      {template === 'Framed' && (
+        <>
+          <rect x="4" y="4" width="40" height="40" rx="4" style={panel} />
+          <rect x="9" y="9" width="30" height="18" rx="3" style={{ fill: 'var(--surface)', opacity: 0.55 }} />
+          <rect x="9" y="32" width="24" height="3" rx="1.5" style={line} />
+          <rect x="9" y="38" width="14" height="2" rx="1" style={line} />
+        </>
+      )}
+      {template === 'Label' && (
+        <>
+          <rect x="4" y="4" width="40" height="40" rx="4" style={photo} />
+          <rect x="8" y="28" width="32" height="12" rx="2.5" style={{ fill: 'var(--surface)' }} />
+          <rect x="12" y="31.5" width="20" height="2.5" rx="1.25" style={panel} />
+          <rect x="12" y="36" width="12" height="1.8" rx="0.9" style={panel} />
+        </>
+      )}
+      {template === 'Poster' && (
+        <>
+          <rect x="4" y="4" width="40" height="40" rx="4" style={panel} />
+          <circle cx="44" cy="44" r="14" style={{ fill: 'none', stroke: 'var(--surface)', strokeWidth: 1.2, opacity: 0.35 }} />
+          <rect x="9" y="10" width="8" height="2" rx="1" style={line} />
+          <rect x="9" y="17" width="28" height="5" rx="2" style={line} />
+          <rect x="9" y="25" width="20" height="5" rx="2" style={line} />
+          <rect x="9" y="37" width="12" height="2" rx="1" style={{ ...line, opacity: 0.7 }} />
+        </>
+      )}
+      {template === 'Quote' && (
+        <>
+          <rect x="4" y="4" width="40" height="40" rx="4" style={panel} />
+          <text x="8" y="22" style={{ fill: 'var(--surface)', fontSize: 18, fontWeight: 700 }}>
+            “
+          </text>
+          <rect x="9" y="24" width="30" height="3" rx="1.5" style={line} />
+          <rect x="9" y="30" width="24" height="3" rx="1.5" style={line} />
+          <rect x="9" y="37" width="14" height="2" rx="1" style={{ ...line, opacity: 0.7 }} />
+        </>
+      )}
+    </svg>
+  )
+}
+
 function Results({
   jobs,
   progress,
   pageUrls,
   platforms,
+  onDeleted,
 }: {
   jobs: ContentJob[]
   /** Bu oturumda baslatilan paketin ilerlemesi; yalniz gecmis gosteriliyorsa null. */
   progress: { done: number; expected: number } | null
   pageUrls: string[]
   platforms: PlatformProfile[]
+  onDeleted: (jobId: string) => void
 }) {
   const running = progress !== null && progress.done < progress.expected
 
@@ -262,6 +427,7 @@ function Results({
             <Card key={job.id} className="post-card">
               <ErrorBox message={job.errorMessage ?? 'Üretim başarısız'} />
               <p className="muted post-source">{job.pageUrl}</p>
+              <DeletePostButton jobId={job.id} onDeleted={onDeleted} />
             </Card>
           ) : (
             job.variants.map((variant) => (
@@ -270,6 +436,7 @@ function Results({
                 job={job}
                 variant={variant}
                 platform={platforms.find((p) => p.code === job.platformCode)}
+                onDeleted={onDeleted}
               />
             ))
           ),
@@ -283,10 +450,12 @@ function PostCard({
   job,
   variant,
   platform,
+  onDeleted,
 }: {
   job: ContentJob
   variant: ContentVariant
   platform?: PlatformProfile
+  onDeleted: (jobId: string) => void
 }) {
   const [favorite, setFavorite] = useState(variant.isFavorite)
   const [copied, setCopied] = useState(false)
@@ -358,9 +527,12 @@ function PostCard({
           {text.length}
           {platform ? ` / ${platform.maxChars}` : ''} karakter
         </span>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={copy}>
-          {copied ? 'Kopyalandı' : 'Kopyala'}
-        </button>
+        <div className="post-foot-actions">
+          <button type="button" className="btn btn-ghost btn-sm" onClick={copy}>
+            {copied ? 'Kopyalandı' : 'Kopyala'}
+          </button>
+          <DeletePostButton jobId={job.id} onDeleted={onDeleted} />
+        </div>
       </div>
 
       {job.pageUrl && (
@@ -369,6 +541,39 @@ function PostCard({
         </a>
       )}
     </Card>
+  )
+}
+
+/** Gonderiyi ve gorsellerini siler; onay ister, hata olursa butonun yaninda gosterir. */
+function DeletePostButton({
+  jobId,
+  onDeleted,
+}: {
+  jobId: string
+  onDeleted: (jobId: string) => void
+}) {
+  const { busy, error, run } = useAction()
+
+  const remove = () =>
+    void run(async () => {
+      if (!window.confirm('Bu gönderi ve görselleri silinecek. Emin misiniz?')) return
+      await deleteContentJob(jobId)
+      onDeleted(jobId)
+    })
+
+  return (
+    <>
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm tone-bad"
+        onClick={remove}
+        disabled={busy}
+        title="Gönderiyi sil"
+      >
+        {busy ? 'Siliniyor…' : 'Sil'}
+      </button>
+      {error && <span className="form-error">{error}</span>}
+    </>
   )
 }
 
@@ -468,6 +673,12 @@ function useAssetUrl(assetId: string, enabled: boolean) {
   return state.id === assetId ? state : { url: null, failed: false }
 }
 
+const SourceLabel: Record<ContentAsset['source'], string> = {
+  site: 'site fotoğrafı',
+  card: 'marka kartı',
+  ai: 'yapay zekâ',
+}
+
 /** Galeri sayfa boyutu — her kucuk resim ayri bir istek oldugu icin olculu tutulur. */
 const GalleryPageSize = 12
 
@@ -545,6 +756,9 @@ function GalleryItem({ asset, platform }: { asset: ContentAsset; platform?: Plat
       <figcaption className="gallery-meta">
         <div className="gallery-tags">
           {platform && <span className="badge">{platform.displayName}</span>}
+          <span className="badge" title="Görselin kaynağı">
+            {SourceLabel[asset.source]}
+          </span>
           {asset.kind === 'Raw' && <span className="badge">yazısız</span>}
           <span className="muted">{timeAgo(asset.createdAt)}</span>
         </div>

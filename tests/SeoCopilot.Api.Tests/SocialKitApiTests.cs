@@ -52,7 +52,7 @@ public class SocialKitApiTests(PostgresFixture fixture) : IClassFixture<Postgres
 
     /// <summary>
     /// Anthropic anahtari tanimsiz: gonderiler sablonla uretilmeli, is 'done' bitmeli.
-    /// FLUX de tanimsiz oldugundan varyant gorselsiz kalir.
+    /// Varsayilan gorsel kaynaklari ucretsiz oldugundan varyant yine de gorsel alir.
     /// </summary>
     [Fact]
     public async Task Kit_falls_back_to_templates_when_the_model_is_off()
@@ -91,7 +91,9 @@ public class SocialKitApiTests(PostgresFixture fixture) : IClassFixture<Postgres
 
             var variant = job.GetProperty("variants")[0];
             Assert.False(string.IsNullOrWhiteSpace(variant.GetProperty("body").GetString()));
-            Assert.Equal(JsonValueKind.Null, variant.GetProperty("imageAssetId").ValueKind);
+            // Ucretli kaynak olmadan da gorsel olur: test sitesinin gorselleri 404 doner
+            // (ve 127.0.0.1 ic ag korumasina takilir), zincir marka kartina duser.
+            Assert.NotEqual(JsonValueKind.Null, variant.GetProperty("imageAssetId").ValueKind);
 
             angles.Add(variant.GetProperty("angle").GetString());
             pages.Add(job.GetProperty("pageUrl").GetString());

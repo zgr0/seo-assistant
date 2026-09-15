@@ -162,6 +162,8 @@ public record ContentJobDto(
 public record ContentAssetDto(
     Guid Id,
     string Kind,
+    /// <summary>site | card | ai — gorselin nereden geldigi.</summary>
+    string Source,
     Guid? RawAssetId,
     int Width,
     int Height,
@@ -181,6 +183,12 @@ public record ContentAssetDto(
         return new ContentAssetDto(
             a.Id,
             a.Kind.ToString(),
+            a.Model switch
+            {
+                Services.Social.SocialImageService.SiteImageModel => "site",
+                Services.Social.SocialImageService.CardModel => "card",
+                _ => "ai"
+            },
             a.SourceAssetId,
             a.Width,
             a.Height,

@@ -15,12 +15,33 @@ public static class ImageCaptionBuilder
 
     public const int MaxBrandLineChars = 40;
 
+    /// <summary>Alt metin ve alinti bu uzunlukta kirpilir — gorselde en fazla birkac satir okunur.</summary>
+    public const int MaxSublineChars = 140;
+
+    /// <summary>Bundan kisa aciklama alt metin olmaya degmez.</summary>
+    private const int MinSublineChars = 20;
+
     public static ImageCaption? Build(ContentVariant variant, Page? page, BrandProfile? brand)
     {
         var headline = Headline(variant, page);
         if (headline is null) return null;
 
-        return new ImageCaption(headline, BrandLine(page, brand));
+        return new ImageCaption(headline, BrandLine(page, brand), Subline(variant, page, headline));
+    }
+
+    /// <summary>
+    /// Varyantin kisa aciklamasi, yoksa meta description. Basligi tekrar ediyorsa ya da cok
+    /// kisaysa null — sablon yalniz basligi basar.
+    /// </summary>
+    private static string? Subline(ContentVariant variant, Page? page, string headline)
+    {
+        var text = new[] { variant.Description, page?.MetaDescription }
+            .Where(t => t is { Length: > 0 })
+            .Select(t => Tidy(t!))
+            .FirstOrDefault(t => t.Length >= MinSublineChars
+                && !t.StartsWith(headline.TrimEnd('…'), StringComparison.OrdinalIgnoreCase));
+
+        return text is null ? null : Clip(text, MaxSublineChars);
     }
 
     /// <summary>

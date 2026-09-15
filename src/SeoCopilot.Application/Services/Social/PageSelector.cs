@@ -54,14 +54,20 @@ public static class PageSelector
     /// Secilen sayfalar ve site butunune gore verilmis tur karari. Tur, gonderi sablonuna ve
     /// model istemine iletilir — sayfa tek basina siniflanirsa site geneli og:type yaniltir.
     /// </summary>
-    public static IReadOnlyList<SelectedPage> SelectWithKinds(IEnumerable<Page> pages, int count)
+    /// <param name="usage">
+    /// Sayfadan daha once kac gonderi uretildigi. Az kullanilan sayfa once gelir — ayni sayfa
+    /// her "uret" tiklamasinda yeniden secilmez; tum sayfalar dolasilinca basa donulur.
+    /// </param>
+    public static IReadOnlyList<SelectedPage> SelectWithKinds(
+        IEnumerable<Page> pages, int count, Func<Page, int>? usage = null)
     {
         var usable = pages.Where(IsUsable).ToList();
         var trustMarkup = ShouldTrustMarkup(usable);
 
         return [.. usable
             .Select(page => new SelectedPage(page, PageClassifier.Classify(page, trustMarkup)))
-            .OrderByDescending(x => x.Kind == PageKind.Article)
+            .OrderBy(x => usage?.Invoke(x.Page) ?? 0)
+            .ThenByDescending(x => x.Kind == PageKind.Article)
             .ThenByDescending(x => (x.Page.MainText?.Length ?? 0) >= RichTextChars)
             .ThenBy(x => x.Kind == PageKind.Listing)
             // Yazilarda derinlik anlamsiz (hepsi bolumun altinda); oteki sayfalarda ust seviye once.

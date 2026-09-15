@@ -99,6 +99,16 @@ public sealed class ContentService(
             var withImage = job.Type == ContentJobType.SocialKit;
             CompletionResult? result = null;
 
+            // Sitede daha once yazilan gonderiler — ayni metin ikinci kez kaydedilmez.
+            var history = withImage && job.SiteId is Guid siteId
+                ? PostHistory.From(
+                    await content.ListSocialPostsAsync(job.TenantId, siteId, PostHistory.MaxRecords, ct),
+                    exceptJobId: job.Id)
+                : PostHistory.Empty;
+            var previousPosts = withImage && job.Page is not null
+                ? history.BodiesOf(job.Page.Url, MaxPreviousBodiesInPrompt)
+                : null;
+
             // Sosyal pakette model zorunlu degil: anahtar yoksa ya da cagri duserse
             // gonderi tarama verisinden sablonla uretilir (bkz. PagePostBuilder).
             if (llm.IsEnabled || !withImage)
@@ -107,7 +117,7 @@ public sealed class ContentService(
                 {
                     result = await llm.CompleteDetailedAsync(
                         ContentPrompt.System(job.BrandProfile, platform, withImage),
-                        ContentPrompt.User(job, job.Page),
+                        ContentPrompt.User(job, job.Page, previousPosts),
                         ct);
                 }
                 catch (Exception ex) when (withImage && ex is not OperationCanceledException)
@@ -121,6 +131,9 @@ public sealed class ContentService(
             {
                 foreach (var variant in ContentResponseParser.Parse(result.Text))
                 {
+                    // Model istemdeki eski gonderiyi aynen tekrarladiysa alinmaz; sablona dusulur.
+                    if (withImage && history.Contains(variant.Body)) continue;
+
                     variant.JobId = job.Id;
                     job.Variants.Add(variant);
                 }
@@ -128,9 +141,7 @@ public sealed class ContentService(
 
             if (job.Variants.Count == 0 && withImage && job.Page is not null)
             {
-                var variant = PagePostBuilder.Build(
-                    job.Page, platform, job.BrandProfile, VariantIndexOf(job),
-                    ContentPrompt.PageKindOf(ContentPrompt.ParseInput(job.Input), job.Page));
+                var variant = BuildUniqueTemplate(job, platform, history);
                 variant.JobId = job.Id;
                 job.Variants.Add(variant);
             }
@@ -328,16 +339,77 @@ public sealed class ContentService(
         };
     }
 
+    /// <summary>Sablonun gecmiste olmayan bir metin bulmak icin deneyecegi azami kalip.</summary>
+    public const int MaxTemplateAttempts = 36;
+
+    /// <summary>Model istemine "bunlari tekrarlama" diye verilen eski gonderi sayisi.</summary>
+    private const int MaxPreviousBodiesInPrompt = 5;
+
+    /// <summary>
+    /// Isin <c>postIndex</c>'inden baslayip sitede daha once yazilmamis ilk sablon metnini doner.
+    /// Butun kaliplar tukenirse (cok kisa, tek cumlelik sayfa) ilk aday kullanilir ve loglanir.
+    /// </summary>
+    private ContentVariant BuildUniqueTemplate(ContentJob job, PlatformProfile? platform, PostHistory history)
+    {
+        var page = job.Page!;
+        var kind = ContentPrompt.PageKindOf(ContentPrompt.ParseInput(job.Input), page);
+        var start = VariantIndexOf(job);
+
+        ContentVariant? first = null;
+        for (var attempt = 0; attempt < MaxTemplateAttempts; attempt++)
+        {
+            var candidate = PagePostBuilder.Build(page, platform, job.BrandProfile, start + attempt, kind);
+            if (!history.Contains(candidate.Body)) return candidate;
+            first ??= candidate;
+        }
+
+        logger.LogWarning(
+            "İş {JobId}: sayfa {Url} için yeni şablon metni kalmadı — önceki bir gönderi tekrarlanıyor",
+            job.Id, page.Url);
+        return first!;
+    }
+
+    /// <summary>
+    /// Gonderiyi (isi), varyantlarini ve gorsellerini siler. Uretim suren is silinmez — worker
+    /// yazmaya devam edip hata verirdi; takilip kalmis eski isler ise silinebilir.
+    /// </summary>
+    public async Task DeleteJobAsync(Guid jobId, Guid tenantId, CancellationToken ct = default)
+    {
+        var job = await content.GetContentJobForTenantAsync(jobId, tenantId, ct)
+            ?? throw new NotFoundException($"İçerik işi {jobId} bulunamadı");
+
+        if (job.Status is ContentJobStatus.Queued or ContentJobStatus.Running
+            && job.CreatedAt > DateTimeOffset.UtcNow - StuckJobAge)
+        {
+            throw new ConflictException("Üretim sürüyor — bitince silebilirsiniz");
+        }
+
+        var keys = await content.ListAssetKeysForJobAsync(job.Id, ct);
+        await content.DeleteContentJobAsync(job.Id, ct);
+
+        // Kayit gitti; dosya silinemezse yalniz diskte artik kalir, istek basarisiz sayilmaz.
+        foreach (var key in keys)
+        {
+            try
+            {
+                await assets.DeleteAsync(key, ct);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Görsel dosyası silinemedi: {Key}", key);
+            }
+        }
+    }
+
+    /// <summary>Bu sureden eski 'queued/running' is takilmis sayilir ve silinebilir.</summary>
+    private static readonly TimeSpan StuckJobAge = TimeSpan.FromMinutes(30);
+
     /// <summary>
     /// Paketteki kacinci gonderi oldugu — sablon acisi (bilgilendirici/merak/satis) buna gore doner.
     /// <see cref="Social.SocialKitService"/> is acarken <c>postIndex</c> yazar.
     /// </summary>
     private static int VariantIndexOf(ContentJob job) =>
-        ContentPrompt.ParseInput(job.Input) is JsonElement input
-        && input.TryGetProperty("postIndex", out var value)
-        && value.TryGetInt32(out var index)
-            ? Math.Max(index, 0)
-            : 0;
+        ContentPrompt.PostIndexOf(ContentPrompt.ParseInput(job.Input));
 
     /// <summary>Serbest girdi govdesini normalize eder ve varyant sayisini icine yazar.</summary>
     private static string BuildInput(JsonElement? input, int? variantCount)

@@ -38,6 +38,12 @@ public class Page
     public int ImagesTotal { get; set; }
     public int ImagesNoAlt { get; set; }
 
+    /// <summary>
+    /// Sayfadaki gorsel adresleri, belge sirasinda (en fazla <c>MaxStoredImageUrls</c>).
+    /// Sosyal gonderi gorseli icin kaynak — ucretli uretim yerine sitenin kendi fotograflari.
+    /// </summary>
+    public List<string> ImageUrls { get; set; } = [];
+
     /// <summary>Tarama sonunda hesaplanir.</summary>
     public int InlinkCount { get; set; }
     public int OutlinkInternal { get; set; }

@@ -1,16 +1,23 @@
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using SeoCopilot.Application.Abstractions;
+using SeoCopilot.Application.Services.Content;
 using SeoCopilot.Domain.Entities.Content;
 using SeoCopilot.Domain.Enums;
 
 namespace SeoCopilot.Application.Services.Social;
 
 /// <summary>
-/// Varyantlarin <c>imageBrief</c> alanindan gorsel uretir, depoya yazar ve varyanta baglar.
-/// Gorsel zorunlu degildir: uretici kapaliysa ya da cagri basarisizsa is yine 'done' biter.
+/// Gonderi gorselini ayarlardaki kaynak sirasiyla bulur (<see cref="SocialImageSettings"/>):
+/// sitenin kendi fotografi, yapay zeka uretimi ya da marka karti. Ilk basarili kaynak
+/// kullanilir, ustune yazi basilir, iki surum de saklanir.
+/// Gorsel zorunlu degildir: hicbir kaynak sonuc vermezse is yine 'done' biter.
 /// </summary>
 public sealed class SocialImageService(
+    SocialImageSettings settings,
     IImageGenerator generator,
+    ISiteImageFetcher fetcher,
+    IImageCanvas canvas,
     ISocialImageComposer composer,
     IAssetStorage storage,
     IContentRepository content,
@@ -18,6 +25,10 @@ public sealed class SocialImageService(
 {
     /// <summary>Tek iste uretilecek azami gorsel — maliyet freni.</summary>
     public const int MaxImagesPerJob = 5;
+
+    /// <summary><c>content_assets.model</c> — gorselin nereden geldigi.</summary>
+    public const string SiteImageModel = "site-image";
+    public const string CardModel = "brand-card";
 
     /// <summary>Modelin metin/logo basmasini engelleyen kuyruk istemi.</summary>
     private const string PromptSuffix =
@@ -36,52 +47,56 @@ public sealed class SocialImageService(
 
     public async Task AttachAsync(ContentJob job, CancellationToken ct = default)
     {
-        if (!generator.IsEnabled)
-        {
-            logger.LogDebug("Görsel üretimi kapalı — iş {JobId} görselsiz tamamlanıyor", job.Id);
-            return;
-        }
-
         var aspect = job.PlatformCode is { Length: > 0 } code
             && AspectByPlatform.TryGetValue(code, out var value) ? value : "1:1";
 
+        // Ayni isin varyantlari ayni sayfadan gelir; bir fotograf iki kez kullanilmasin.
+        var candidates = new Queue<string>(ImageCandidatesOf(job));
+        var seed = ColorSeedOf(job);
+        var input = ContentPrompt.ParseInput(job.Input);
+        var postIndex = ContentPrompt.PostIndexOf(input);
+
+        // Formda secilen sablonlar ayarlardaki listenin onune gecer.
+        var chosen = ImageTemplatePicker.FromInput(input);
+        IReadOnlyCollection<ImageTemplate> templates = chosen.Count > 0 ? chosen : settings.Templates;
+        var cardOnly = ImageTemplatePicker.WantsCardOnly(templates);
+
         foreach (var variant in job.Variants.OrderBy(v => v.VariantIndex).Take(MaxImagesPerJob))
         {
-            // Model brief yazdiysa stil kuyrugunu biz ekleriz; yazmadiysa (sema disi yanit,
-            // LLM kapali) tarama verisinden uretilen brief stilini zaten icerir.
-            string prompt;
-            if (variant.ImageBrief is { Length: > 0 } brief)
-            {
-                prompt = $"{brief}. {PromptSuffix}";
-            }
-            else
-            {
-                if (job.Page is null) continue;
-                variant.ImageBrief = PageBriefBuilder.Build(job.Page);
-                variant.ImageAlt ??= PageBriefBuilder.BuildAlt(job.Page);
-                prompt = variant.ImageBrief;
-            }
-
             try
             {
-                var image = await generator.GenerateAsync(prompt, aspect, ct);
+                var (image, prompt) = await ResolveAsync(job, variant, aspect, candidates, seed, cardOnly, ct);
                 if (image is null)
                 {
-                    logger.LogWarning("Görsel üretilemedi: iş {JobId}, varyant {Index}",
+                    logger.LogWarning("Hiçbir kaynak görsel vermedi: iş {JobId}, varyant {Index}",
                         job.Id, variant.VariantIndex);
                     continue;
                 }
 
                 // Ham gorsel her zaman saklanir: yazi begenilmezse ya da baslik degisirse
-                // yeniden uretim (ve yeni FLUX ucreti) gerekmeden yeniden basilabilir.
+                // kaynaga yeniden gidilmeden (ve AI ucreti dogmadan) yeniden basilabilir.
                 var raw = await SaveAsync(
                     job, ContentAssetKind.Raw, image.Content, image.ContentType,
                     image.Width, image.Height, prompt, image.Model, sourceAssetId: null, ct);
 
                 variant.ImageAssetId = raw.Id;
 
-                // Ayni baytlar uzerine yazi — ikinci bir uretim cagrisi YOK.
+                // Ayni baytlar uzerine tasarim — kaynaga ikinci bir cagri YOK. Sablon gonderi
+                // sirasiyla doner; marka kartinda fotografsiz sablonlar kullanilir.
                 var caption = ImageCaptionBuilder.Build(variant, job.Page, job.BrandProfile);
+                if (caption is not null)
+                {
+                    caption = caption with
+                    {
+                        Template = ImageTemplatePicker.Pick(
+                            templates,
+                            photo: image.Model != CardModel,
+                            hasSubline: caption.Subline is not null,
+                            index: postIndex + variant.VariantIndex),
+                        ColorSeed = seed
+                    };
+                }
+
                 if (caption is not null && composer.Compose(image.Content, caption) is { } captioned)
                 {
                     var withText = await SaveAsync(
@@ -103,6 +118,84 @@ public sealed class SocialImageService(
                     job.Id, variant.VariantIndex);
             }
         }
+    }
+
+    /// <summary>Kaynaklari sirayla dener; ilk sonucu ve kaydedilecek istemi/aciklamayi doner.</summary>
+    /// <param name="cardOnly">Yalniz fotografsiz sablon secildi — fotograf indirilmez, AI cagrilmaz.</param>
+    private async Task<(GeneratedImage? Image, string Prompt)> ResolveAsync(
+        ContentJob job, ContentVariant variant, string aspect, Queue<string> candidates,
+        string seed, bool cardOnly, CancellationToken ct)
+    {
+        foreach (var source in settings.Sources)
+        {
+            var name = source.Trim().ToLowerInvariant();
+            if (cardOnly && name is SocialImageSettings.SiteSource or SocialImageSettings.AiSource) continue;
+
+            switch (name)
+            {
+                case SocialImageSettings.SiteSource:
+                    while (candidates.TryDequeue(out var url))
+                    {
+                        var bytes = await fetcher.FetchAsync(url, ct);
+                        // Kucuk ya da logo gibi uzun/ince gorseller Fit'te elenir; siradakine gec.
+                        if (bytes is not null && canvas.Fit(bytes, aspect) is { } fitted)
+                            return (fitted with { Model = SiteImageModel }, url);
+                    }
+                    break;
+
+                case SocialImageSettings.AiSource:
+                    if (!generator.IsEnabled) break;
+                    var prompt = AiPrompt(job, variant);
+                    if (prompt is null) break;
+                    if (await generator.GenerateAsync(prompt, aspect, ct) is { } generated)
+                        return (generated, prompt);
+                    break;
+
+                case SocialImageSettings.CardSource:
+                    return (canvas.Card(aspect, seed) with { Model = CardModel }, $"marka kartı: {seed}");
+
+                default:
+                    logger.LogWarning("Bilinmeyen görsel kaynağı atlandı: {Source}", source);
+                    break;
+            }
+        }
+
+        return (null, string.Empty);
+    }
+
+    /// <summary>
+    /// Model brief yazdiysa stil kuyrugunu biz ekleriz; yazmadiysa (sema disi yanit, LLM
+    /// kapali) tarama verisinden uretilen brief stilini zaten icerir.
+    /// </summary>
+    private static string? AiPrompt(ContentJob job, ContentVariant variant)
+    {
+        if (variant.ImageBrief is { Length: > 0 } brief) return $"{brief}. {PromptSuffix}";
+        if (job.Page is null) return null;
+
+        variant.ImageBrief = PageBriefBuilder.Build(job.Page);
+        variant.ImageAlt ??= PageBriefBuilder.BuildAlt(job.Page);
+        return variant.ImageBrief;
+    }
+
+    /// <summary>Sitenin alan adi — kart ve tasarim renkleri bir sitede hep ayni kalsin.</summary>
+    private static string ColorSeedOf(ContentJob job) =>
+        Uri.TryCreate(job.Page?.Url, UriKind.Absolute, out var uri) ? uri.Host : job.TenantId.ToString();
+
+    /// <summary><see cref="SocialKitService"/> is acarken yazdigi site gorseli adaylari.</summary>
+    private static IEnumerable<string> ImageCandidatesOf(ContentJob job)
+    {
+        if (ContentPrompt.ParseInput(job.Input) is not JsonElement input
+            || !input.TryGetProperty("imageCandidates", out var list)
+            || list.ValueKind != JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return list.EnumerateArray()
+            .Where(e => e.ValueKind == JsonValueKind.String)
+            .Select(e => e.GetString()!)
+            .Where(PageImageCandidates.LooksLikePhoto)
+            .ToList();
     }
 
     /// <summary>Bayt icerigini depoya, meta veriyi <c>content_assets</c> satirina yazar.</summary>

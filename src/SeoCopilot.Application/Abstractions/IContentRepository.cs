@@ -3,6 +3,11 @@ using SeoCopilot.Domain.Enums;
 
 namespace SeoCopilot.Application.Abstractions;
 
+/// <summary>Daha once uretilmis sosyal gonderi — sayfa URL'i, platform ve varyant govdeleri.</summary>
+/// <param name="PageUrl">Sayfa satiri silinmisse null; o durumda <c>input.pageUrl</c> okunur.</param>
+public sealed record SocialPostRecord(
+    Guid JobId, string? PageUrl, string Input, string? PlatformCode, IReadOnlyList<string> Bodies);
+
 /// <summary>Marka profilleri, platform seed'i ve icerik uretim isleri.</summary>
 public interface IContentRepository
 {
@@ -46,6 +51,19 @@ public interface IContentRepository
 
     Task<ContentVariant?> GetVariantForTenantAsync(
         Guid variantId, Guid tenantId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Sitenin basarisiz olmayan sosyal paket isleri, yeniden eskiye (en fazla
+    /// <paramref name="take"/>) — ayni sayfanin/metnin tekrar uretilmesini onlemek icin.
+    /// </summary>
+    Task<IReadOnlyList<SocialPostRecord>> ListSocialPostsAsync(
+        Guid tenantId, Guid siteId, int take, CancellationToken ct = default);
+
+    /// <summary>Isi ve (veritabani cascade'iyle) varyantlarini ve gorsel kayitlarini siler.</summary>
+    Task DeleteContentJobAsync(Guid jobId, CancellationToken ct = default);
+
+    /// <summary>Isin gorsellerinin depo anahtarlari — kayit silinmeden once dosyalar icin okunur.</summary>
+    Task<IReadOnlyList<string>> ListAssetKeysForJobAsync(Guid jobId, CancellationToken ct = default);
 
     // --- uretilen gorseller ---
 

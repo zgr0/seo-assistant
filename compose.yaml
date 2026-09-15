@@ -50,7 +50,12 @@ services:
       Anthropic__WorkspaceId: ${ANTHROPIC_WORKSPACE_ID:-}
       PageSpeed__ApiKey: ${PAGESPEED_API_KEY:-}
 
-      # Sosyal medya gorsel uretimi (FLUX). Bos birakilirsa gonderiler gorselsiz uretilir.
+      # Sosyal medya gorseli varsayilan olarak ucretsizdir: sayfanin kendi fotografi,
+      # yoksa marka karti. Yapay zeka uretimi (FLUX, kredi ister) icin anahtari verip
+      # kaynak sirasina "ai" ekleyin:
+      #   SocialImages__Sources__0: ai
+      #   SocialImages__Sources__1: site
+      #   SocialImages__Sources__2: card
       Flux__ApiKey: ${FLUX_API_KEY:-}
 
       Reports__Directory: /app/App_Data/reports

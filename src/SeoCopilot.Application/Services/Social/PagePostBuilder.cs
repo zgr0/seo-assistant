@@ -45,11 +45,17 @@ public static class PagePostBuilder
     {
         var article = (kind ?? PageClassifier.Classify(page)) == PageKind.Article;
         var angles = article ? ArticleAngles : Angles;
+        index = Math.Max(index, 0);
         var angle = angles[index % angles.Length];
 
+        // Acilar bitince tur artar: ayni sayfa yeniden islendiginde kanca, eylem cagrisi ve
+        // alinan cumleler degisir. Ilk tur (round 0) klasik sablondur.
+        var round = index / angles.Length;
+        var formal = brand?.AddressForm != AddressForm.Sen;
+
         var heading = Heading(page);
-        var value = Value(page);
-        var cta = Cta(page, platform, brand, angle, article);
+        var value = Value(page, round);
+        var cta = Cta(page, platform, formal, angle, article, round / HookCount);
 
         // Baslik gezinme etiketi oldugu icin aciklamadan turediyse govde onu tekrarlamasin.
         if (value is not null && (value.StartsWith(heading, StringComparison.OrdinalIgnoreCase)
@@ -58,7 +64,7 @@ public static class PagePostBuilder
             value = null;
         }
 
-        var body = Body(angle, heading, value, cta, platform);
+        var body = Body(Hook(angle, heading, formal, round % HookCount), value, cta, platform);
         var hashtags = Hashtags(page, brand, platform);
 
         return new ContentVariant
@@ -75,13 +81,12 @@ public static class PagePostBuilder
         };
     }
 
-    private static string Body(
-        string angle, string heading, string? value, string cta, PlatformProfile? platform)
+    private static string Body(string hook, string? value, string cta, PlatformProfile? platform)
     {
         var limit = platform?.MaxChars ?? DefaultMaxChars;
 
         var sb = new StringBuilder();
-        sb.AppendLine(Hook(angle, heading));
+        sb.AppendLine(hook);
 
         if (value is { Length: > 0 })
         {
@@ -99,11 +104,29 @@ public static class PagePostBuilder
     /// <summary>Kancaya soru eki ancak kisa bir baslikta yakisir.</summary>
     private const int MaxQuestionHookChars = 45;
 
-    /// <summary>Ilk satir kanca — aciya gore degisir, iddia eklemez.</summary>
-    private static string Hook(string angle, string heading) =>
-        angle == "merak_uyandiran" && heading.Length <= MaxQuestionHookChars
-            ? $"{heading} — nedir, ne işe yarar?"
-            : heading;
+    /// <summary>Tur basina kanca kalibi sayisi; eylem cagrisi bunun katlarinda doner.</summary>
+    private const int HookCount = 3;
+
+    /// <summary>
+    /// Ilk satir kanca — aciya ve tura gore degisir, iddia eklemez. Kalip 0 klasik kancadir;
+    /// digerleri basligi degistirmeden cerceveler.
+    /// </summary>
+    private static string Hook(string angle, string heading, bool formal, int variant)
+    {
+        var shortHeading = heading.Length <= MaxQuestionHookChars;
+
+        return (angle, variant) switch
+        {
+            ("merak_uyandiran", 0) => shortHeading ? $"{heading} — nedir, ne işe yarar?" : heading,
+            ("merak_uyandiran", 1) => shortHeading ? $"{heading}: işin aslı ne?" : $"Merak edenler için: {heading}",
+            ("merak_uyandiran", _) => $"Hiç düşündün{(formal ? "üz" : "")} mü? {heading}",
+            ("satis_odakli", 1) => $"{(formal ? "Aradığınız" : "Aradığın")} çözüm: {heading}",
+            ("satis_odakli", 2) => $"{heading} için doğru adres",
+            (_, 1) => $"Yakından bakalım: {heading}",
+            (_, 2) => $"Kısaca {heading}",
+            _ => heading
+        };
+    }
 
     /// <summary>
     /// Gonderi kancasi. "Hakkimizda" gibi gezinme etiketleri kanca olmaz — sayfanin
@@ -112,37 +135,62 @@ public static class PagePostBuilder
     private static string Heading(Page page) =>
         PageHeadline.Meaningful(page) is { } headline ? Clip(headline, MaxValueChars) : Tidy(page.Url);
 
-    /// <summary>Govdenin degeri: meta description, yoksa ana metnin ilk cumleleri.</summary>
-    private static string? Value(Page page)
+    /// <summary>Govdeye tek seferde alinan ana metin cumlesi.</summary>
+    private const int SentencesPerValue = 2;
+
+    /// <summary>
+    /// Govdenin degeri. Ilk turda meta description (yoksa ana metnin ilk cumleleri); sonraki
+    /// turlarda ana metnin siradaki cumleleri — ayni sayfadan ikinci gonderi baska bir seyi anlatir.
+    /// </summary>
+    private static string? Value(Page page, int round)
     {
-        if (page.MetaDescription is { Length: > 0 } meta) return Clip(Tidy(meta), MaxValueChars);
+        var meta = page.MetaDescription is { Length: > 0 } m ? Clip(Tidy(m), MaxValueChars) : null;
+        if (round == 0 && meta is not null) return meta;
 
-        if (page.MainText is not { Length: > 0 } text) return null;
+        var sentences = page.MainText is { Length: > 0 } text
+            ? text
+                .Split(['.', '!', '?', '\n'], StringSplitOptions.RemoveEmptyEntries)
+                .Select(s => Tidy(s))
+                .Where(s => s.Length > 30)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
+            : [];
 
-        var sentences = text
-            .Split(['.', '!', '?', '\n'], StringSplitOptions.RemoveEmptyEntries)
-            .Select(s => s.Trim())
-            .Where(s => s.Length > 30)
-            .Take(2)
-            .ToList();
+        if (sentences.Count == 0) return meta;
 
-        return sentences.Count == 0 ? null : Clip(string.Join(". ", sentences) + ".", MaxValueChars);
+        // Meta varsa ilk tur onu kullandi; cumleler ikinci turdan itibaren bastan alinir.
+        var chunk = meta is null ? round : round - 1;
+        var chunks = (sentences.Count + SentencesPerValue - 1) / SentencesPerValue;
+
+        // Cumleler bitince meta ile donusumlu basa sarilir.
+        var slot = chunk % (chunks + (meta is null ? 0 : 1));
+        if (slot == chunks) return meta;
+
+        var picked = sentences.Skip(slot * SentencesPerValue).Take(SentencesPerValue);
+        return Clip(string.Join(". ", picked) + ".", MaxValueChars);
     }
 
     private static string Cta(
-        Page page, PlatformProfile? platform, BrandProfile? brand, string angle, bool article)
+        Page page, PlatformProfile? platform, bool formal, string angle, bool article, int variant)
     {
-        var formal = brand?.AddressForm != AddressForm.Sen;
-
-        var verb = (article, angle) switch
+        var verbs = (article, angle) switch
         {
             // Yazida eylem okumaktir; teklif/inceleme cagrisi haberin tonuna uymaz.
-            (true, "merak_uyandiran") => "Devamı yazıda",
-            (true, _) => formal ? "Yazının tamamını okuyun" : "Yazının tamamını oku",
-            (_, "satis_odakli") => formal ? "Teklif alın" : "Teklif al",
-            (_, "merak_uyandiran") => formal ? "Detayları inceleyin" : "Detayları incele",
-            _ => formal ? "Ayrıntılar için sayfamıza göz atın" : "Ayrıntılar için sayfamıza göz at"
+            (true, "merak_uyandiran") => new[] { "Devamı yazıda", "Yazının devamı sayfamızda", "Ayrıntılar yazıda" },
+            (true, _) => formal
+                ? ["Yazının tamamını okuyun", "Tüm yazıyı okuyun", "Yazının tamamı sayfamızda"]
+                : ["Yazının tamamını oku", "Tüm yazıyı oku", "Yazının tamamı sayfamızda"],
+            (_, "satis_odakli") => formal
+                ? ["Teklif alın", "Hemen bize ulaşın", "Bilgi ve teklif için iletişime geçin"]
+                : ["Teklif al", "Hemen bize ulaş", "Bilgi ve teklif için iletişime geç"],
+            (_, "merak_uyandiran") => formal
+                ? ["Detayları inceleyin", "Cevabı sayfamızda bulun", "Merak ettikleriniz sayfamızda"]
+                : ["Detayları incele", "Cevabı sayfamızda bul", "Merak ettiklerin sayfamızda"],
+            _ => formal
+                ? ["Ayrıntılar için sayfamıza göz atın", "Tüm detaylar sayfamızda", "Daha fazlası için sayfamızı ziyaret edin"]
+                : ["Ayrıntılar için sayfamıza göz at", "Tüm detaylar sayfamızda", "Daha fazlası için sayfamızı ziyaret et"]
         };
+        var verb = verbs[variant % verbs.Length];
 
         // Link paylasimi desteklenmiyorsa (Instagram) URL govdeye konmaz.
         return platform?.SupportsLinks == true ? $"{verb}: {page.Url}" : $"{verb} — bağlantı profilimizde.";

@@ -105,6 +105,40 @@ public sealed class ContentRepository(SeoCopilotDbContext db) : IContentReposito
         db.ContentVariants
             .FirstOrDefaultAsync(v => v.Id == variantId && v.Job!.TenantId == tenantId, ct);
 
+    public async Task<IReadOnlyList<SocialPostRecord>> ListSocialPostsAsync(
+        Guid tenantId, Guid siteId, int take, CancellationToken ct = default)
+    {
+        var rows = await db.ContentJobs
+            .AsNoTracking()
+            .Where(j => j.TenantId == tenantId
+                && j.SiteId == siteId
+                && j.Type == ContentJobType.SocialKit
+                && j.Status != ContentJobStatus.Failed)
+            .OrderByDescending(j => j.CreatedAt)
+            .Take(take)
+            .Select(j => new
+            {
+                j.Id,
+                PageUrl = j.Page != null ? j.Page.Url : null,
+                j.Input,
+                j.PlatformCode,
+                Bodies = j.Variants.Select(v => v.Body).ToList()
+            })
+            .ToListAsync(ct);
+
+        return [.. rows.Select(r => new SocialPostRecord(r.Id, r.PageUrl, r.Input, r.PlatformCode, r.Bodies))];
+    }
+
+    public Task DeleteContentJobAsync(Guid jobId, CancellationToken ct = default) =>
+        db.ContentJobs.Where(j => j.Id == jobId).ExecuteDeleteAsync(ct);
+
+    public async Task<IReadOnlyList<string>> ListAssetKeysForJobAsync(
+        Guid jobId, CancellationToken ct = default) =>
+        await db.ContentAssets
+            .Where(a => a.JobId == jobId)
+            .Select(a => a.StorageKey)
+            .ToListAsync(ct);
+
     public async Task AddContentAssetAsync(ContentAsset asset, CancellationToken ct = default) =>
         await db.ContentAssets.AddAsync(asset, ct);
 

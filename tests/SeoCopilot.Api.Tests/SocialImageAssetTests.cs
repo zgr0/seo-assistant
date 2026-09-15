@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using SeoCopilot.Application.Abstractions;
 using SeoCopilot.Application.Services;
+using SeoCopilot.Application.Services.Social;
 using SeoCopilot.Domain.Enums;
 using SeoCopilot.Infrastructure.Persistence;
 using SkiaSharp;
@@ -44,7 +45,7 @@ public class SocialImageAssetTests(PostgresFixture fixture) : IClassFixture<Post
         var generator = new CountingGenerator();
 
         await using var factory = fixture.CreateFactory(services =>
-            services.AddSingleton<IImageGenerator>(generator));
+            UseAi(services, generator));
         await using var webSite = await TestWebSite.StartAsync();
 
         var (client, siteId) = await SocialKitApiTests.CrawlForTestsAsync(
@@ -108,7 +109,7 @@ public class SocialImageAssetTests(PostgresFixture fixture) : IClassFixture<Post
 
         await using var factory = fixture.CreateFactory(services =>
         {
-            services.AddSingleton<IImageGenerator>(generator);
+            UseAi(services, generator);
             services.AddSingleton<ISocialImageComposer, DisabledComposer>();
         });
         await using var webSite = await TestWebSite.StartAsync();
@@ -149,7 +150,7 @@ public class SocialImageAssetTests(PostgresFixture fixture) : IClassFixture<Post
         var generator = new CountingGenerator();
 
         await using var factory = fixture.CreateFactory(services =>
-            services.AddSingleton<IImageGenerator>(generator));
+            UseAi(services, generator));
         await using var webSite = await TestWebSite.StartAsync();
 
         var (client, siteId) = await SocialKitApiTests.CrawlForTestsAsync(
@@ -207,7 +208,7 @@ public class SocialImageAssetTests(PostgresFixture fixture) : IClassFixture<Post
     {
         await using var factory = fixture.CreateFactory(services =>
         {
-            services.AddSingleton<IImageGenerator>(new CountingGenerator());
+            UseAi(services, new CountingGenerator());
             services.AddSingleton<ISocialImageComposer, DisabledComposer>();
         });
         await using var webSite = await TestWebSite.StartAsync();
@@ -234,6 +235,16 @@ public class SocialImageAssetTests(PostgresFixture fixture) : IClassFixture<Post
 
         Assert.Equal("Raw", item.GetProperty("kind").GetString());
         Assert.Equal(JsonValueKind.Null, item.GetProperty("rawAssetId").ValueKind);
+    }
+
+    /// <summary>
+    /// Bu siniftaki testler AI yolunu olcer: varsayilan kaynaklar ucretsizdir (site, kart),
+    /// o yuzden sahte ureticinin cagrilmasi icin kaynak acikca "ai" yapilir.
+    /// </summary>
+    private static void UseAi(IServiceCollection services, IImageGenerator generator)
+    {
+        services.AddSingleton(generator);
+        services.AddSingleton(new SocialImageSettings { Sources = [SocialImageSettings.AiSource] });
     }
 
     /// <summary>Yazi basmayi kapatan sahte — ham gorselle devam edilmeli.</summary>

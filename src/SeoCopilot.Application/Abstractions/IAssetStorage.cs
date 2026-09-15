@@ -6,4 +6,7 @@ public interface IAssetStorage
     Task<string> SaveAsync(string key, byte[] content, CancellationToken ct = default);
 
     Task<byte[]?> ReadAsync(string key, CancellationToken ct = default);
+
+    /// <summary>Dosya yoksa sessizce doner — silme tekrarlanabilir.</summary>
+    Task DeleteAsync(string key, CancellationToken ct = default);
 }

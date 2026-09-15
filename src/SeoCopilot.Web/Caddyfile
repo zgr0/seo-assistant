@@ -29,8 +29,13 @@
 		Referrer-Policy strict-origin-when-cross-origin
 	}
 
-	# Hash'li varliklar uzun sureli onbelleklenebilir; index.html asla.
-	@hashed path_regexp \.[0-9a-f]{8,}\.(js|css|woff2?|png|jpg|svg|webp|avif)$
+	# Vite hash'li varliklari /assets altina yazar (ör. index-p3aBx3Cq.js) — degismez, uzun sureli
+	# onbelleklenir. Geri kalan her sey, ozellikle "/" ve SPA'nin try_files ile dondugu index.html,
+	# her istekte yeniden dogrulanir: aksi halde tarayici eski index.html'i tutup yeni surumu hic
+	# yuklemez. (Eski kural yalniz "/index.html" yolunu yakaliyordu; tarayici ise "/" ister.)
+	@hashed path /assets/*
 	header @hashed Cache-Control "public, max-age=31536000, immutable"
-	header /index.html Cache-Control "no-cache"
+
+	@notHashed not path /assets/*
+	header @notHashed Cache-Control "no-cache"
 }

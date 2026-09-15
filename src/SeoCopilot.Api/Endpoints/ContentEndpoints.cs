@@ -71,6 +71,14 @@ public static class ContentEndpoints
             return job is null ? Results.NotFound() : Results.Ok(job);
         });
 
+        // Gonderi silme: is, varyantlari ve gorselleri birlikte gider.
+        group.MapDelete("/jobs/{jobId:guid}", async (
+            Guid jobId, ClaimsPrincipal user, ContentService content, CancellationToken ct) =>
+        {
+            await content.DeleteJobAsync(jobId, user.TenantId(), ct);
+            return Results.NoContent();
+        });
+
         group.MapGet("/jobs", async (
             ClaimsPrincipal user, ContentService content,
             string? type, string? platformCode, string? status, Guid? siteId, Guid? pageId,

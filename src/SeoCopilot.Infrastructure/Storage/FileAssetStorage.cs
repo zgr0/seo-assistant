@@ -33,6 +33,13 @@ public sealed class FileAssetStorage(IOptions<AssetStorageOptions> options) : IA
         return File.Exists(path) ? await File.ReadAllBytesAsync(path, ct) : null;
     }
 
+    public Task DeleteAsync(string key, CancellationToken ct = default)
+    {
+        // File.Delete olmayan dosyada hata vermez.
+        File.Delete(Resolve(key));
+        return Task.CompletedTask;
+    }
+
     private string Resolve(string key)
     {
         var path = Path.GetFullPath(Path.Combine(_root, key));

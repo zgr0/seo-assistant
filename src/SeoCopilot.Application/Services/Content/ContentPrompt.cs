@@ -80,7 +80,13 @@ public static class ContentPrompt
         return sb.ToString();
     }
 
-    public static string User(ContentJob job, Page? page)
+    /// <summary>Isteme tasinan eski gonderi basina azami karakter.</summary>
+    private const int MaxPreviousPostChars = 400;
+
+    /// <param name="previousPosts">
+    /// Ayni sayfadan daha once yazilmis gonderiler; model bunlari tekrarlamamasi icin gorur.
+    /// </param>
+    public static string User(ContentJob job, Page? page, IReadOnlyCollection<string>? previousPosts = null)
     {
         var input = ParseInput(job.Input);
         var count = VariantCount(input);
@@ -116,6 +122,19 @@ public static class ContentPrompt
             sb.AppendLine();
         }
 
+        if (previousPosts is { Count: > 0 })
+        {
+            sb.AppendLine("# Bu sayfa için daha önce yazılan gönderiler");
+            sb.AppendLine("Bunları tekrarlama: farklı bir kanca, farklı bir açı ve sayfanın başka bir " +
+                "yönünü anlatan yeni cümleler kullan.");
+            foreach (var post in previousPosts)
+            {
+                var text = post.Length > MaxPreviousPostChars ? post[..MaxPreviousPostChars] + "…" : post;
+                sb.AppendLine($"- {text.ReplaceLineEndings(" ")}");
+            }
+            sb.AppendLine();
+        }
+
         if (input is not null && input.Value.EnumerateObject().Any())
         {
             sb.AppendLine("# Girdi alanları (JSON)");
@@ -136,6 +155,18 @@ public static class ContentPrompt
         && Common.EnumText.TryParse<Social.PageKind>(value.GetString(), out var kind)
             ? kind
             : Social.PageClassifier.Classify(page);
+
+    /// <summary>
+    /// Sosyal pakette gonderinin sirasi (<c>postIndex</c>) — sablon acisi ve gorsel tasarimi
+    /// buna gore doner. Yoksa 0.
+    /// </summary>
+    public static int PostIndexOf(JsonElement? input) =>
+        input is JsonElement el
+        && el.ValueKind == JsonValueKind.Object
+        && el.TryGetProperty("postIndex", out var value)
+        && value.TryGetInt32(out var index)
+            ? Math.Max(index, 0)
+            : 0;
 
     public static int VariantCount(JsonElement? input) =>
         input is JsonElement el

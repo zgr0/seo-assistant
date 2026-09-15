@@ -28,9 +28,10 @@ public sealed class ImageOverlayOptions
 }
 
 /// <summary>
-/// Gorselin uzerine baslik ve marka satirini basar. Okunurlugu garantilemek icin metnin
-/// arkasina gecisli bir perde cizilir; perdenin rengi gorselin alt bolgesinin parlakligina
-/// gore secilir.
+/// Gorselden gonderi tasarimi cikarir. <see cref="ImageTemplate.Overlay"/>'de baslik ve marka
+/// satiri fotografin ustune basilir; okunurluk icin arkasina gecisli perde cizilir, perdenin
+/// rengi alt bolgenin parlakligina gore secilir. Diger sablonlar
+/// <see cref="SkiaPostTemplates"/>'te cizilir.
 /// </summary>
 public sealed class SkiaImageComposer(
     IOptions<ImageOverlayOptions> options, ILogger<SkiaImageComposer> logger)
@@ -59,11 +60,20 @@ public sealed class SkiaImageComposer(
 
             using var surface = SKSurface.Create(new SKImageInfo(bitmap.Width, bitmap.Height));
             var canvas = surface.Canvas;
-            canvas.DrawBitmap(bitmap, 0, 0, SKSamplingOptions.Default);
 
-            var bright = IsBright(bitmap);
-            DrawScrim(canvas, bitmap.Width, bitmap.Height, bright);
-            DrawCaption(canvas, bitmap.Width, bitmap.Height, caption, bright);
+            if (caption.Template == ImageTemplate.Overlay)
+            {
+                canvas.DrawBitmap(bitmap, 0, 0, SKSamplingOptions.Default);
+
+                var bright = IsBright(bitmap);
+                DrawScrim(canvas, bitmap.Width, bitmap.Height, bright);
+                DrawCaption(canvas, bitmap.Width, bitmap.Height, caption, bright);
+            }
+            else
+            {
+                canvas.Clear(SKColors.Black);
+                new SkiaPostTemplates(canvas, bitmap, caption).Draw(caption.Template);
+            }
 
             using var snapshot = surface.Snapshot();
             using var encoded = snapshot.Encode(SKEncodedImageFormat.Jpeg, _opt.Quality);
@@ -137,9 +147,10 @@ public sealed class SkiaImageComposer(
 
         // Satir sayisi sinirina sigana kadar puntoyu kucult.
         List<string> lines;
+        var words = caption.Headline.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         while (true)
         {
-            lines = Wrap(caption.Headline, headlineFont, maxWidth);
+            lines = SkiaText.Wrap(words, headlineFont, maxWidth);
             if (lines.Count <= _opt.MaxHeadlineLines || headlineFont.Size <= width * 0.04f) break;
             headlineFont.Size *= 0.92f;
         }
@@ -174,28 +185,5 @@ public sealed class SkiaImageComposer(
             canvas.DrawText(lines[i], margin, baseline, SKTextAlign.Left, headlineFont, paint);
             baseline -= headlineLeading;
         }
-    }
-
-    /// <summary>Kelime bazli sarma; tek basina sigmayan kelime oldugu gibi birakilir.</summary>
-    private static List<string> Wrap(string text, SKFont font, float maxWidth)
-    {
-        var lines = new List<string>();
-        var current = string.Empty;
-
-        foreach (var word in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-        {
-            var candidate = current.Length == 0 ? word : $"{current} {word}";
-            if (font.MeasureText(candidate) <= maxWidth || current.Length == 0)
-            {
-                current = candidate;
-                continue;
-            }
-
-            lines.Add(current);
-            current = word;
-        }
-
-        if (current.Length > 0) lines.Add(current);
-        return lines;
     }
 }

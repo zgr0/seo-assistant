@@ -232,6 +232,8 @@ export interface ContentJob {
 export interface ContentAsset {
   id: string
   kind: 'Raw' | 'Captioned'
+  /** Görselin nereden geldiği: sitenin fotoğrafı, marka kartı ya da yapay zekâ. */
+  source: 'site' | 'card' | 'ai'
   /** Yazısız kaynak görsel; ham görselde null. */
   rawAssetId: string | null
   width: number
@@ -270,6 +272,9 @@ export interface BrandProfile {
   isDefault: boolean
   createdAt: string
 }
+
+/** Gönderi görselinin tasarım şablonu (sunucudaki ImageTemplate). */
+export type ImageTemplate = 'Overlay' | 'Split' | 'Framed' | 'Label' | 'Poster' | 'Quote'
 
 export interface SocialKitResponse {
   siteId: string

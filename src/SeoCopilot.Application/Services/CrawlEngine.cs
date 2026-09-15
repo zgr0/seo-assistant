@@ -36,6 +36,9 @@ public sealed class CrawlEngine(
 {
     private const int SaveBatchSize = 50;
     private const int MaxUrlLength = 2048;
+
+    /// <summary>Sayfa basina saklanan gorsel adresi — sosyal gonderi gorseli adaylari.</summary>
+    public const int MaxStoredImageUrls = 20;
     private const int MaxAnchorLength = 512;
 
     /// <summary>BLOCKED_BY_ROBOTS_TXT bulgusunda saklanan azami ornek sayisi.</summary>
@@ -536,6 +539,10 @@ public sealed class CrawlEngine(
         SchemaTypes = [.. extracted.SchemaTypes],
         ImagesTotal = extracted.ImagesTotal,
         ImagesNoAlt = extracted.ImagesNoAlt,
+        // Galeri sayfalarinda yuzlerce gorsel olabilir; gonderi icin ilk birkac aday yeter.
+        ImageUrls = [.. extracted.ImageUrls
+            .Where(u => u.Length <= MaxUrlLength)
+            .Take(MaxStoredImageUrls)],
         ContentHash = extracted.ContentHash,
         MainText = extracted.MainText,
         Lang = ClipOrNull(extracted.Lang, 16)
