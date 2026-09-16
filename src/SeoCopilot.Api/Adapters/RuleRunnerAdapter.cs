@@ -78,11 +78,17 @@ public sealed class RuleRunnerAdapter : IRuleRunner
             .Select(v => new CrawlRuleFinding(v.PageId, ToFinding(v.Finding)))];
     }
 
-    public decimal OverallScore(IEnumerable<int> pageScores, IEnumerable<RuleFinding> crawlFindings) =>
-        ScoreCalculator.CalculateOverall(pageScores, crawlFindings.Select(ToViolation));
+    public decimal OverallScore(IReadOnlyDictionary<string, decimal> categoryScores) =>
+        ScoreCalculator.CalculateOverall(categoryScores);
 
-    public Dictionary<string, decimal> CategoryScores(IEnumerable<RuleFinding> allFindings, int pageCount) =>
-        ScoreCalculator.CalculateCategoryScores(allFindings.Select(ToViolation), pageCount);
+    public Dictionary<string, decimal> CategoryScores(
+        IEnumerable<RuleFinding> pageFindings,
+        IEnumerable<RuleFinding> crawlFindings,
+        int pageCount) =>
+        ScoreCalculator.CalculateCategoryScores(
+            pageFindings.Select(ToViolation),
+            crawlFindings.Select(ToViolation),
+            pageCount);
 
     public Dictionary<string, int> ScoringSnapshot() => ScoreCalculator.Snapshot();
 

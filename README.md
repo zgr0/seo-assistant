@@ -201,11 +201,44 @@ Notlar:
 - `IMAGE_TOO_LARGE` icin crawler sayfa basina `Crawler:MaxImageChecksPerPage` kadar gorselin boyutunu HEAD ile olcer (sonuclar crawl boyunca onbelleklenir). Deger `0` ise olcum kapanir ve kural sessiz kalir.
 - Performans kurallari yalniz `PageSpeed:ApiKey` tanimliysa calisir: kok sayfa icin PSI cagrilir, olcum `vitals` tablosuna yazilir ve kurallara beslenir. PSI hata verirse crawl etkilenmez.
 
-Skor: severity basina sabit ceza (critical 25, high 15, medium 8, low 3) 100'den dusulur.
-`crawls.overall_score` = sayfa skorlarinin ortalamasi eksi crawl seviyesi cezalar — crawl seviyesi ceza
-**kural kodu basina bir kez** uygulanir, boylece 300 oksuz sayfa skoru tek basina sifirlamaz.
-`category_scores` kategori basina ayni formul (ceza sayfa sayisina bolunur);
-`scoring_snapshot` kullanilan ceza tablosunu dondurur.
+Skor tek yonlu turer: **bulgu → kategori skoru → genel skor**. Her bulgu yalnizca bir yerde sayilir.
+
+Severity basina sabit ceza: critical 25, high 15, medium 8, low 3, info 0.
+
+`category_scores` kategori basina `100 - ceza`:
+
+- **Sayfa seviyesi** bulgunun cezasi sayfa sayisina bolunur — 60 sayfanin ikisinde eksik meta, meta kategorisini 99.73 yapar.
+- **Crawl seviyesi** bulgunun cezasi bolunmez, **kural kodu basina bir kez** tam yazilir. `SITEMAP_MISSING` site capinda tek bir gercektir; sayfa sayisina bolununce gorunmez olurdu. Kod basina teklestirme de 300 oksuz sayfanin kategoriyi tek basina sifirlamasini engeller.
+- Ihlali olmayan kategori de tabloya 100 olarak yazilir.
+
+`crawls.overall_score` iki adimda turer. Once kategori skorlarinin **agirlikli eksigi** bulunur —
+agirliklar (toplam 100): dizinlenebilirlik 20, meta 18, icerik 18, linkler 14, performans 12,
+gorseller 8, yapisal veri 6, dil 4. Sonra bu eksik bir **doygunluk egrisinden** gecer:
+
+```
+eksik   = Σ agirlik_k * (100 - kategori_k) / 100      # 0-100
+genel   = 100 - 100 * eksik / (eksik + 18)
+```
+
+Egrinin tek parametresi `OverallHalfPoint = 18`: eksik 18'e esitken genel skor tam 50 olur.
+Kucultmek sertlestirir, buyutmek yumusatir.
+
+| agirlikli eksik | 0 | 2 | 5 | 10 | 18 | 30 | 50 | 80 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| genel skor | 100 | 90.0 | 78.3 | 64.3 | 50.0 | 37.5 | 26.5 | 18.4 |
+
+Neden egri: duz agirlikli ortalama fazla comertti — temiz kategoriler (gorseller, dil) sorunlulari
+seyreltiyor, eksik sitemap + kirik link + duplicate icerik + kotu LCP tasiyan siteye 88 verdiriyordu.
+Egri kucuk eksikleri buyutur, buyukleri sikistirir. Tabana yapismadigi icin kotu siteler arasindaki
+sira da korunur: eksik 50 ile eksik 80 ayni skoru vermez. Genel skor bulgulardan ikinci kez ceza yemez.
+
+Kategori barlari **dogrusal** kalir, genel skor egriseldir — bu yuzden genel skor cogu zaman
+barlarin altindadir. Bar "o kategoride ortalama sayfa ne kadar temiz", gauge "site butun olarak
+ne durumda" sorusunu yanitlar.
+
+`scoring_snapshot` kullanilan ceza tablosunu (`critical`, `high`, ...), kategori agirliklarini
+(`category_weight_indexability`, ...) ve egri esigini (`overall_half_point`) dondurur —
+puanlama ileride degisse de gecmis taramalar yorumlanabilir.
 
 ## Marka & icerik uretimi
 
@@ -392,6 +425,13 @@ EF yapilandirmasi: [src/SeoCopilot.Infrastructure/Persistence](src/SeoCopilot.In
 kodlara tasir (`HTTP_STATUS` → sayfanin durum koduna gore `BROKEN_PAGE_4XX`/`SERVER_ERROR_5XX` gibi), ardindan
 eski kural satirlarini siler. Karsiligi kalmayan `SLOW_TTFB`, `HREFLANG_INVALID` ve esik alti
 `META_DESCRIPTION_LENGTH` bulgulari **silinir**.
+
+`RescoreCrawlsWithWeightedCategories` skorlanmis tum gecmis taramalari yeni formulle yeniden hesaplar
+(`overall_score`, `category_scores`, `scoring_snapshot`) — bu olmadan `/compare` eski ve yeni taramayi
+karsilastirinca sahte bir sicrama gosterirdi. Bulgular (`issues`) degismez, yalniz skor kolonlari yazilir.
+Bulgu durumu (open/ignored/fixed) dikkate alinmaz: skor tarama anindaki gercegi anlatir.
+Formul migration SQL'ine **sabitlenmistir**; agirliklar ya da egri esigi degisirse yeni bir migration gerekir.
+Eski skorlar hicbir yerde saklanmadigi icin `Down` geri alamaz.
 
 Uygulamak icin Postgres calisir olmali:
 

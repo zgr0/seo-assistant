@@ -17,11 +17,18 @@ public interface IRuleRunner
         IReadOnlyList<CrawlLinkFacts> links,
         CrawlSiteFacts site);
 
-    /// <summary>Crawl geneli skor: sayfa skorlarinin ortalamasi eksi crawl seviyesi cezalar.</summary>
-    decimal OverallScore(IEnumerable<int> pageScores, IEnumerable<RuleFinding> crawlFindings);
+    /// <summary>Crawl geneli skor: kategori skorlarinin agirlikli ortalamasi.</summary>
+    decimal OverallScore(IReadOnlyDictionary<string, decimal> categoryScores);
 
-    /// <summary>crawl.category_scores govdesi.</summary>
-    Dictionary<string, decimal> CategoryScores(IEnumerable<RuleFinding> allFindings, int pageCount);
+    /// <summary>
+    /// crawl.category_scores govdesi — her kategori icin bir deger, ihlali olmayan 100.
+    /// Sayfa bulgusu sayfa sayisina bolunur, crawl seviyesi bulgu tam ceza ile girer;
+    /// her bulgu yalnizca burada sayilir, genel skor bu tablodan turer.
+    /// </summary>
+    Dictionary<string, decimal> CategoryScores(
+        IEnumerable<RuleFinding> pageFindings,
+        IEnumerable<RuleFinding> crawlFindings,
+        int pageCount);
 
     /// <summary>crawl.scoring_snapshot govdesi — kullanilan ceza tablosu.</summary>
     Dictionary<string, int> ScoringSnapshot();

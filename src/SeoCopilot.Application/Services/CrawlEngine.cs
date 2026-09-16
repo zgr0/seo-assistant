@@ -93,7 +93,6 @@ public sealed class CrawlEngine(
         var pages = new List<Page>();
         var links = new List<PageLink>();
         var pageFindings = new List<(Page Page, RuleFinding Finding)>();
-        var pageScores = new List<int>();
         var truncated = false;
         var cancelled = false;
         var saved = 0;
@@ -156,7 +155,6 @@ public sealed class CrawlEngine(
                 if (extracted.StatusCode is < 200 or >= 300 || extracted.IsHtml)
                 {
                     var outcome = ruleRunner.Run(extracted);
-                    pageScores.Add(outcome.Score);
                     foreach (var finding in outcome.Findings)
                         pageFindings.Add((page, finding));
                 }
@@ -263,15 +261,16 @@ public sealed class CrawlEngine(
         var crawlFindings = RunCrawlRules(pages, htmlPages, links, home, siteFacts);
         WriteIssues(crawl, site, pageFindings, crawlFindings);
 
-        var allFindings = pageFindings.Select(f => f.Finding)
-            .Concat(crawlFindings.Select(f => f.Finding))
-            .ToList();
-
         // Varlik satirlari sayfa sayilmaz — ne butceden duser ne skoru sulandirir.
         crawl.PagesDiscovered = seen.Count;
         crawl.PagesCrawled = htmlPages;
-        crawl.OverallScore = ruleRunner.OverallScore(pageScores, crawlFindings.Select(f => f.Finding));
-        crawl.CategoryScores = ruleRunner.CategoryScores(allFindings, htmlPages);
+
+        // Sira onemli: genel skor kategori tablosundan turer, bulgular ikinci kez sayilmaz.
+        crawl.CategoryScores = ruleRunner.CategoryScores(
+            pageFindings.Select(f => f.Finding),
+            crawlFindings.Select(f => f.Finding),
+            htmlPages);
+        crawl.OverallScore = ruleRunner.OverallScore(crawl.CategoryScores);
         crawl.ScoringSnapshot = ruleRunner.ScoringSnapshot();
         crawl.IssueCounts = crawl.Issues
             .GroupBy(i => i.Severity.ToString().ToLowerInvariant())
