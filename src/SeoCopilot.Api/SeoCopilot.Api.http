@@ -147,14 +147,14 @@ Authorization: Bearer {{token}}
 GET {{host}}/api/sites/{{siteId}}/vitals
 Authorization: Bearer {{token}}
 
-### Rapor uret
+### Rapor uret (format verilmezse pdf)
 POST {{host}}/api/sites/{{siteId}}/reports
 Authorization: Bearer {{token}}
 Content-Type: application/json
 
-{ "crawlId": "{{crawlId}}" }
+{ "crawlId": "{{crawlId}}", "format": "pdf" }
 
-### Rapor indir
+### Rapor indir (pdf veya html — rapor hangi bicimle uretildiyse)
 GET {{host}}/api/reports/<report id>/download
 Authorization: Bearer {{token}}
 

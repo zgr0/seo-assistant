@@ -364,14 +364,45 @@ o da bos ise hepsi kullanilir.
 | Endpoint | Aciklama |
 | --- | --- |
 | `GET /api/sites/{id}/vitals?url=&take=` | PSI olcum gecmisi: `{latest, history}` |
-| `POST /api/sites/{id}/reports` | `{crawlId?, compareCrawlId?, periodStart?, periodEnd?}` — `crawlId` verilmezse son tarama. Rapor kuyruga girer |
+| `POST /api/sites/{id}/reports` | `{crawlId?, compareCrawlId?, periodStart?, periodEnd?, format?}` — `crawlId` verilmezse son tarama, `format` verilmezse `pdf`. Rapor kuyruga girer |
 | `GET /api/sites/{id}/reports` | Sitenin raporlari |
-| `GET /api/reports/{id}` | Rapor durumu + hazirsa `downloadUrl` |
-| `GET /api/reports/{id}/download` | Rapor dosyasi (HTML). Hazir degilse `400` |
+| `GET /api/reports/{id}` | Rapor durumu + bicimi + hazirsa `downloadUrl` |
+| `GET /api/reports/{id}/download` | Rapor dosyasi (`application/pdf` veya `text/html`). Hazir degilse `400` |
 | `GET /api/dashboard` | Kiraci ozeti: site kartlari (son skor + onceki taramaya gore degisim), acik bulgu dagilimi, son taramalar, son icerik uretimleri |
 
-Rapor HTML olarak uretilir (harici varlik icermez, tarayicidan PDF'e basilabilir) ve
-`Reports:Directory` altina `reports/{id}.html` olarak yazilir.
+### Raporun icerigi
+
+Rapor **ozet**tir, bulgu dokumu degil — tipik bir site icin bir sayfa. Sirasiyla: genel skor +
+onceki taramaya gore degisim, sekiz kategorinin karnesi, sonra **oncelikli isler**: en cok kural
+degil, genel skoru en cok asagi ceken `MaxPriorities` kural. Her madde icin siddet, kac sayfayi
+etkiledigi, ilk duzeltme adimi, kaynak dokuman ve birkac ornek adres yazilir. Geri kalan kurallar
+tek satirlik bir notta ozetlenir.
+
+Butun bulgular ve etkilenen sayfa listeleri panoda filtrelenebiliyor; rapora dokulunce PDF
+onlarca sayfa oluyor ve okunmuyordu.
+
+Oncelik sirasi tahmin degil: bir kural grubunun **kategori icindeki cezasi x kategori agirligi**
+hesaplanir ve cezalar ile agirliklar crawl'in kendi `scoring_snapshot`'indan okunur, boylece eski
+raporlar o gunun agirliklariyla yorumlanir (bkz. [ScoreCalculator](src/SeoCopilot.Rules/ScoreCalculator.cs)).
+Bu yuzden cok sayfaya yayilmis bir `medium`, iki sayfadaki bir `critical`'in ustunde cikabilir —
+skoru gercekten o daha cok goturuyordur. Yoksayilan bulgular onceliklere girmez.
+
+### Cikti bicimi
+
+Iki bicim de ayni kaynaktan cikar: [HtmlReportRenderer](src/SeoCopilot.Application/Services/Reporting/HtmlReportRenderer.cs)
+harici varlik icermeyen tek parca HTML uretir; `format=pdf` ise bu HTML headless Chromium'da
+basilir ([PlaywrightBrowserPool.PrintPdfAsync](src/SeoCopilot.Crawler/PlaywrightBrowserPool.cs)).
+Dosya `Reports:Directory` altina `reports/{id}.pdf` ya da `reports/{id}.html` olarak yazilir.
+
+- PDF icin ek bir bagimlilik yok: tarama zaten Chromium calistiriyor, ayni tarayici singleton'i
+  paylasilir. `Headless = false` yapilirsa imajda tarayici bulunmaz ve PDF de uretilemez.
+- Sayfa boyutu (A4) ve kenar bosluklari raporun kendi `@page` kuralindan gelir — Playwright'in
+  `PreferCssPageSize` secenegi bu yuzden acik.
+- Yazi tipi olarak `system-ui` **kullanilmaz**: konteynerde fontconfig'in varsayilan sans'i
+  WenQuanYi Zen Hei'ye cozuluyor ve onda `ğ İ ş` bulunmadigi icin o harfler baska yazi tipine
+  dusup kelimenin ortasinda font degistiriyor. Stack `Arial` ile baslar, o da Liberation Sans'a eslenir.
+- Uretim damgasi ust satirdadir, sayfa sonunda degil: icerik sayfa sinirina yakin bittiginde tek
+  basina bos bir sayfa daha aciyordu. Sayfa numarasi Chromium'un altbilgi sablonundan gelir.
 
 ## Web arayuzu
 

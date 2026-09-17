@@ -50,7 +50,7 @@ public sealed class SeoCopilotDbContext(DbContextOptions<SeoCopilotDbContext> op
         typeof(CrawlTrigger), typeof(RuleCategory), typeof(Severity), typeof(IssueStatus),
         typeof(VitalsDevice), typeof(VitalsSource), typeof(BrandTone), typeof(AddressForm),
         typeof(EmojiUsage), typeof(ContentJobType), typeof(ContentJobStatus),
-        typeof(ContentAssetKind), typeof(ReportStatus)
+        typeof(ContentAssetKind), typeof(ReportStatus), typeof(ReportFormat)
     ];
 
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)

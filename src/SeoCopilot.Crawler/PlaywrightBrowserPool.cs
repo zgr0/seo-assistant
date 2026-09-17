@@ -72,6 +72,51 @@ public sealed class PlaywrightBrowserPool(IOptions<CrawlerOptions>? options = nu
             headers.GetValueOrDefault("x-robots-tag"));
     }
 
+    /// <summary>
+    /// Verilen HTML'i A4 PDF'e basar. Icerik <c>SetContentAsync</c> ile verilir; rapor HTML'i
+    /// harici varlik icermedigi icin ag beklemesi yoktur. PDF basimi yalniz Chromium'da calisir.
+    /// </summary>
+    public async Task<byte[]> PrintPdfAsync(string html, CancellationToken ct = default)
+    {
+        var browser = await GetBrowserAsync();
+        await using var context = await browser.NewContextAsync();
+        var page = await context.NewPageAsync();
+
+        await page.SetContentAsync(html, new()
+        {
+            WaitUntil = WaitUntilState.Load,
+            Timeout = PdfTimeoutMs
+        });
+        ct.ThrowIfCancellationRequested();
+
+        // PreferCssPageSize olmadan Playwright kendi varsayilanini (Letter) dayatir ve
+        // rapordaki @page kurali yok sayilir; sayfa boyutu/kenar boslugu CSS'te kalsin diye acik.
+        // PrintBackground olmadan tablo basliklarinin zemini basilmaz.
+        return await page.PdfAsync(new()
+        {
+            PreferCSSPageSize = true,
+            PrintBackground = true,
+            DisplayHeaderFooter = true,
+            HeaderTemplate = "<div></div>",
+            FooterTemplate = FooterTemplate
+        });
+    }
+
+    /// <summary>Icerik yuklemesi ve PDF basimi icin ust sinir.</summary>
+    private const float PdfTimeoutMs = 60_000;
+
+    /// <summary>
+    /// Altbilgi sablonu Chromium'da ayri bir belgede islenir: sayfanin CSS'ini gormez,
+    /// bu yuzden yazi tipi ve kenar bosluklari burada acikca verilir.
+    /// </summary>
+    private const string FooterTemplate =
+        """
+        <div style="width:100%;margin:0 14mm;font-family:Arial,Helvetica,sans-serif;
+                    font-size:8pt;color:#888;text-align:right">
+          <span class="pageNumber"></span> / <span class="totalPages"></span>
+        </div>
+        """;
+
     public async ValueTask DisposeAsync()
     {
         if (_browser is not null) await _browser.DisposeAsync();

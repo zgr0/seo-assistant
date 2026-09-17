@@ -3,8 +3,9 @@
 # API imaji. Build baglami repo koku (compose'da context: .) — Api butun katmanlara
 # proje referansi veriyor, tek proje klasoru yetmez.
 #
-# Chromium dahil: renderJs=true olan siteler Playwright ile getiriliyor. Tarayici
-# olmadan o taramalar calisma aninda patlardi.
+# Chromium dahil ve iki is birden goruyor: renderJs=true olan siteler Playwright ile
+# getiriliyor, rapor PDF'i de ayni tarayicidan basiliyor. Tarayici olmadan o taramalar
+# ve butun PDF raporlar calisma aninda patlardi.
 
 # --- build ---
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build

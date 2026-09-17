@@ -3,12 +3,15 @@ using SeoCopilot.Domain.Entities.Reporting;
 
 namespace SeoCopilot.Application.Dtos;
 
-/// <summary>Crawl verilmezse sitenin en son crawl'i kullanilir.</summary>
+/// <summary>
+/// Crawl verilmezse sitenin en son crawl'i kullanilir. Bicim verilmezse PDF uretilir.
+/// </summary>
 public record CreateReportRequest(
     Guid? CrawlId = null,
     Guid? CompareCrawlId = null,
     DateOnly? PeriodStart = null,
-    DateOnly? PeriodEnd = null);
+    DateOnly? PeriodEnd = null,
+    string? Format = null);
 
 public record ReportDto(
     Guid Id,
@@ -17,6 +20,7 @@ public record ReportDto(
     Guid? CompareCrawlId,
     DateOnly PeriodStart,
     DateOnly PeriodEnd,
+    string Format,
     string Status,
     DateTimeOffset? GeneratedAt,
     string? DownloadUrl)
@@ -28,6 +32,7 @@ public record ReportDto(
         r.CompareCrawlId,
         r.PeriodStart,
         r.PeriodEnd,
+        r.Format.ToString(),
         r.Status.ToString(),
         r.GeneratedAt,
         r.StorageKey is null ? null : $"/api/reports/{r.Id}/download");

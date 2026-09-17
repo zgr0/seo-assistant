@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { cancelCrawl, getCrawl, listIssueGroups, listIssues } from '../api/client.ts'
+import {
+  cancelCrawl,
+  createReport,
+  getCrawl,
+  getReport,
+  getReportBlob,
+  listIssueGroups,
+  listIssues,
+} from '../api/client.ts'
 import type { IssueGroup } from '../api/types.ts'
 import { categoryLabel, formatDate, severityLabel, shortUrl } from '../components/format.ts'
 import {
@@ -28,6 +36,10 @@ const categories = [
 
 /** Tarama devam ederken ozet bu araliklarla yeniden cekilir. */
 const pollMs = 3000
+
+/** Rapor kuyruga girdikten sonra durumun yoklanma araligi ve toplam bekleme tavani. */
+const reportPollMs = 1500
+const reportTimeoutMs = 120_000
 
 /** Acilan satirda kac sayfa gosterilir; gerisi kural detayinda. */
 const previewSize = 8
@@ -110,11 +122,14 @@ export function CrawlPage({ crawlId }: { crawlId: string }) {
             {crawl.finishedAt && ` · bitti ${formatDate(crawl.finishedAt)}`}
           </p>
         </div>
-        {running && (
-          <button type="button" className="btn btn-ghost danger" onClick={cancel} disabled={busy}>
-            {busy ? '…' : 'Taramayı iptal et'}
-          </button>
-        )}
+        <div className="page-head-actions">
+          {!running && <ReportDownloadButton siteId={crawl.siteId} crawlId={crawlId} />}
+          {running && (
+            <button type="button" className="btn btn-ghost danger" onClick={cancel} disabled={busy}>
+              {busy ? '…' : 'Taramayı iptal et'}
+            </button>
+          )}
+        </div>
       </header>
 
       {crawl.errorMessage && <ErrorBox message={crawl.errorMessage} />}
@@ -169,6 +184,48 @@ export function CrawlPage({ crawlId }: { crawlId: string }) {
           <IssueGroupTable crawlId={crawlId} groups={visible} status={status} />
         )}
       </Card>
+    </div>
+  )
+}
+
+/**
+ * Rapor tek tiklamayla iner: uc raporu kuyruga atar, hazir olana kadar yoklanir, sonra
+ * dosya cekilip indirilir. Indirme ucu Bearer basligi istedigi icin dogrudan <a href>
+ * kullanilamaz — baytlar blob'a alinip gecici bir object URL uzerinden verilir.
+ */
+function ReportDownloadButton({ siteId, crawlId }: { siteId: string; crawlId: string }) {
+  const { busy, error, run } = useAction()
+
+  const download = () =>
+    void run(async () => {
+      const created = await createReport(siteId, { crawlId, format: 'Pdf' })
+
+      let report = created
+      const deadline = Date.now() + reportTimeoutMs
+      while (report.status === 'Queued' || report.status === 'Running') {
+        if (Date.now() > deadline) throw new Error('Rapor zaman aşımına uğradı, tekrar deneyin')
+        await new Promise((resolve) => setTimeout(resolve, reportPollMs))
+        report = await getReport(created.id)
+      }
+
+      if (report.status !== 'Done') throw new Error('Rapor üretilemedi')
+
+      const url = URL.createObjectURL(await getReportBlob(report.id))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `seo-rapor-${report.periodEnd}.pdf`
+      link.click()
+
+      // Hemen serbest birakilirsa tarayici indirmeyi baslatamadan URL olur; bir tur beklenir.
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    })
+
+  return (
+    <div className="report-action">
+      <button type="button" className="btn btn-primary" onClick={download} disabled={busy}>
+        {busy ? 'Rapor hazırlanıyor…' : 'PDF rapor indir'}
+      </button>
+      {error && <ErrorBox message={error} />}
     </div>
   )
 }

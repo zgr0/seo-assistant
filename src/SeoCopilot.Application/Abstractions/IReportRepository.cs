@@ -16,6 +16,15 @@ public interface IReportRepository
     Task SaveChangesAsync(CancellationToken ct = default);
 }
 
+/// <summary>
+/// Kendi kendine yeten HTML'i PDF'e basar. Uygulama katmani tarayiciyi tanimaz;
+/// gerceklemesi Crawler'daki paylasilan Chromium'u kullanir.
+/// </summary>
+public interface IPdfRenderer
+{
+    Task<byte[]> RenderAsync(byte[] html, CancellationToken ct = default);
+}
+
 /// <summary>Uretilen rapor dosyalarinin deposu (yerel disk, S3, ...).</summary>
 public interface IReportStorage
 {

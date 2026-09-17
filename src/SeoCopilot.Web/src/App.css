@@ -91,6 +91,20 @@
   flex-wrap: wrap;
 }
 
+.page-head-actions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+/* Hata kutusu butonun altina dussun, baslik satirini buyutmesin. */
+.report-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
 .crumbs {
   font-size: 13px;
   color: var(--muted);

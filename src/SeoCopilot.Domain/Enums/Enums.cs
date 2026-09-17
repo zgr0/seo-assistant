@@ -57,3 +57,6 @@ public enum ContentJobStatus { Queued, Running, Done, Failed }
 public enum ContentAssetKind { Raw, Captioned }
 
 public enum ReportStatus { Queued, Running, Done, Failed }
+
+/// <summary>Rapor cikti bicimi. Ikisi de ayni HTML'den uretilir; Pdf headless Chromium'dan basilir.</summary>
+public enum ReportFormat { Html, Pdf }

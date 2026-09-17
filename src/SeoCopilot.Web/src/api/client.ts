@@ -25,6 +25,8 @@ import type {
   PageDetail,
   Paged,
   PlatformProfile,
+  Report,
+  ReportFormat,
   Site,
   SiteVitals,
   SocialKitResponse,
@@ -212,6 +214,21 @@ export const listCrawls = (siteId: string, page = 1, size = 20) =>
 
 export const getSiteVitals = (siteId: string) =>
   request<SiteVitals>(`/sites/${siteId}/vitals`)
+
+// --- raporlar ---
+
+/** Raporu kuyruga atar; dosya hazir olana kadar {@link getReport} ile yoklanir. */
+export const createReport = (
+  siteId: string,
+  input: { crawlId?: string; compareCrawlId?: string; format?: ReportFormat } = {},
+) => request<Report>(`/sites/${siteId}/reports`, { method: 'POST', body: input })
+
+export const getReport = (reportId: string) => request<Report>(`/reports/${reportId}`)
+
+export const listReports = (siteId: string) => request<Report[]>(`/sites/${siteId}/reports`)
+
+/** Rapor dosyasinin baytlari; cagiran taraf object URL uretip serbest birakir. */
+export const getReportBlob = (reportId: string) => requestBlob(`/reports/${reportId}/download`)
 
 // --- crawls ---
 

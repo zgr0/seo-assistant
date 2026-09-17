@@ -17,9 +17,14 @@ public sealed class ReportService(
     ISiteRepository sites,
     IReportStorage storage,
     IReportQueue queue,
+    IPdfRenderer pdf,
     ILogger<ReportService> logger)
 {
-    public const string ContentType = "text/html; charset=utf-8";
+    private static (string Extension, string ContentType) Output(ReportFormat format) => format switch
+    {
+        ReportFormat.Pdf => ("pdf", "application/pdf"),
+        _ => ("html", "text/html; charset=utf-8")
+    };
 
     public async Task<ReportDto> CreateAsync(
         Guid siteId, Guid tenantId, CreateReportRequest request, CancellationToken ct = default)
@@ -56,6 +61,7 @@ public sealed class ReportService(
             CompareCrawlId = request.CompareCrawlId,
             PeriodStart = start,
             PeriodEnd = end,
+            Format = EnumText.ParseOptional<ReportFormat>(request.Format, "format") ?? ReportFormat.Pdf,
             Status = ReportStatus.Queued
         };
 
@@ -92,12 +98,20 @@ public sealed class ReportService(
             var html = HtmlReportRenderer.Render(
                 site, crawl, issues, previous, report.PeriodStart, report.PeriodEnd);
 
-            report.StorageKey = await storage.SaveAsync($"reports/{report.Id}.html", html, ct);
+            // Iki bicim de ayni HTML'den cikar; PDF onun tarayicida basilmis halidir.
+            var content = report.Format is ReportFormat.Pdf
+                ? await pdf.RenderAsync(html, ct)
+                : html;
+
+            var (extension, _) = Output(report.Format);
+            report.StorageKey = await storage.SaveAsync($"reports/{report.Id}.{extension}", content, ct);
             report.Status = ReportStatus.Done;
             report.GeneratedAt = DateTimeOffset.UtcNow;
             await reports.SaveChangesAsync(ct);
 
-            logger.LogInformation("Rapor {ReportId} uretildi: {Bytes} bayt", report.Id, html.Length);
+            logger.LogInformation(
+                "Rapor {ReportId} uretildi: {Format}, {Bytes} bayt",
+                report.Id, report.Format, content.Length);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -126,8 +140,8 @@ public sealed class ReportService(
         return [.. (await reports.ListReportsAsync(siteId, ct)).Select(ReportDto.From)];
     }
 
-    /// <summary>Rapor dosyasi ve onerilen dosya adi. Rapor hazir degilse 400 dogurur.</summary>
-    public async Task<(byte[] Content, string FileName)> DownloadAsync(
+    /// <summary>Rapor dosyasi, onerilen dosya adi ve icerik turu. Rapor hazir degilse 400 dogurur.</summary>
+    public async Task<(byte[] Content, string FileName, string ContentType)> DownloadAsync(
         Guid reportId, Guid tenantId, CancellationToken ct = default)
     {
         var report = await reports.GetReportForTenantAsync(reportId, tenantId, ct)
@@ -139,6 +153,7 @@ public sealed class ReportService(
         var content = await storage.ReadAsync(report.StorageKey, ct)
             ?? throw new NotFoundException("Rapor dosyası depoda bulunamadı");
 
-        return (content, $"seocopilot-rapor-{report.PeriodEnd:yyyyMMdd}-{report.Id}.html");
+        var (extension, contentType) = Output(report.Format);
+        return (content, $"seocopilot-rapor-{report.PeriodEnd:yyyyMMdd}-{report.Id}.{extension}", contentType);
     }
 }

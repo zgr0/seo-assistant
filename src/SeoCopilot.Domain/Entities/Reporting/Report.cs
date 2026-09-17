@@ -22,6 +22,8 @@ public class Report
     /// <summary>Obje deposundaki dosya anahtari (PDF vb.).</summary>
     public string? StorageKey { get; set; }
 
+    public ReportFormat Format { get; set; } = ReportFormat.Pdf;
+
     public ReportStatus Status { get; set; } = ReportStatus.Queued;
     public DateTimeOffset? GeneratedAt { get; set; }
 }

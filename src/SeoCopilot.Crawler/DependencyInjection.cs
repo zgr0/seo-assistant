@@ -13,6 +13,9 @@ public static class DependencyInjection
         services.Configure<CrawlerOptions>(config.GetSection(CrawlerOptions.Section));
         services.AddSingleton<PlaywrightBrowserPool>();
 
+        // Rapor PDF'i ayni Chromium'dan basilir; ayri tarayici acmamak icin burada kayitli.
+        services.AddSingleton<IPdfRenderer, PlaywrightPdfRenderer>();
+
         // Yonlendirmeler PageExtractor icinde elle izlenir — redirect_to kaybolmasin.
         services.AddHttpClient<IPageExtractor, PageExtractor>(ConfigureClient)
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler

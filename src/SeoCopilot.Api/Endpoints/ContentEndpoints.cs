@@ -149,8 +149,8 @@ public static class ReportEndpoints
         group.MapGet("/{reportId:guid}/download", async (
             Guid reportId, ClaimsPrincipal user, ReportService reports, CancellationToken ct) =>
         {
-            var (content, fileName) = await reports.DownloadAsync(reportId, user.TenantId(), ct);
-            return Results.File(content, ReportService.ContentType, fileName);
+            var (content, fileName, contentType) = await reports.DownloadAsync(reportId, user.TenantId(), ct);
+            return Results.File(content, contentType, fileName);
         });
 
         return app;

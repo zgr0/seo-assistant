@@ -169,6 +169,24 @@ export interface SiteVitals {
   history: Vital[]
 }
 
+/** Sunucudaki ReportFormat. */
+export type ReportFormat = 'Pdf' | 'Html'
+
+export interface Report {
+  id: string
+  siteId: string
+  crawlId: string
+  compareCrawlId: string | null
+  periodStart: string
+  periodEnd: string
+  format: ReportFormat
+  /** Queued | Running | Done | Failed */
+  status: string
+  generatedAt: string | null
+  /** Yalniz rapor hazir oldugunda dolu. */
+  downloadUrl: string | null
+}
+
 export interface DashboardSite {
   siteId: string
   name: string
