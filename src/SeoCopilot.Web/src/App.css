@@ -738,6 +738,40 @@
   letter-spacing: 0.4px;
 }
 
+/* Siralama basligi: buton ama gorunum basligin kendisi kalmali. */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.th-sort:hover {
+  color: var(--text);
+}
+
+.th-sort.active {
+  color: var(--text);
+}
+
+/* Etkin olmayan sutunda ok soluk durur; yer kaplamasi degismedigi icin
+   siralama degisince baslik satiri oynamaz. */
+.th-arrow {
+  font-size: 9px;
+  opacity: 0.35;
+}
+
+.th-sort.active .th-arrow {
+  opacity: 1;
+}
+
 .table tbody tr:hover {
   background: var(--code-bg);
 }

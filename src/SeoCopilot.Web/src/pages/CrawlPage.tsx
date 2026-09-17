@@ -53,11 +53,60 @@ function countFor(group: IssueGroup, status: StatusFilter): number {
   return group.totalCount
 }
 
+type SortKey = 'severity' | 'rule' | 'category' | 'count'
+type SortDir = 'asc' | 'desc'
+interface Sort {
+  key: SortKey
+  dir: SortDir
+}
+
+/**
+ * Acilis sirasi sunucunun dondurdugu sirayla ayni (siddet, sonra adet) — sayfa ilk
+ * acildiginda satirlar yer degistirmesin.
+ */
+const defaultSort: Sort = { key: 'severity', dir: 'desc' }
+
+/** Sutuna ilk tiklandiginda ise yarayan yon: sayisal alanlar buyukten, metinler A'dan. */
+const firstDir: Record<SortKey, SortDir> = {
+  severity: 'desc',
+  count: 'desc',
+  rule: 'asc',
+  category: 'asc',
+}
+
+/** Kritik en yuksek. Bilinmeyen siddet en alta duser. */
+function severityRank(severity: string): number {
+  const index = severities.indexOf(severity)
+  return index < 0 ? -1 : severities.length - index
+}
+
+function compareGroups(a: IssueGroup, b: IssueGroup, sort: Sort, status: StatusFilter): number {
+  const sign = sort.dir === 'asc' ? 1 : -1
+  const byCount = countFor(a, status) - countFor(b, status)
+
+  let result = 0
+  if (sort.key === 'severity') {
+    const bySeverity = severityRank(a.severity) - severityRank(b.severity)
+    // Ayni siddette cok bulgulu kural once — sunucunun varsayilan sirasi budur.
+    result = bySeverity !== 0 ? bySeverity : byCount
+  } else if (sort.key === 'count') {
+    result = byCount
+  } else if (sort.key === 'rule') {
+    result = a.ruleTitle.localeCompare(b.ruleTitle, 'tr')
+  } else {
+    result = categoryLabel(a.category).localeCompare(categoryLabel(b.category), 'tr')
+  }
+
+  // Esitlik bozulmazsa satirlar yeniden siralamada oynayabilir; kural kodu sabit anahtar.
+  return result !== 0 ? sign * result : a.ruleCode.localeCompare(b.ruleCode)
+}
+
 export function CrawlPage({ crawlId }: { crawlId: string }) {
   const { data: crawl, error, loading, reload } = useAsync(() => getCrawl(crawlId), [crawlId])
   const [severity, setSeverity] = useState('')
   const [category, setCategory] = useState('')
   const [status, setStatus] = useState<StatusFilter>('Open')
+  const [sort, setSort] = useState<Sort>(defaultSort)
   const { busy, error: actionError, run } = useAction()
 
   const running = crawl?.status === 'Queued' || crawl?.status === 'Running'
@@ -78,13 +127,15 @@ export function CrawlPage({ crawlId }: { crawlId: string }) {
 
   const visible = useMemo(
     () =>
-      (groups.data ?? []).filter(
-        (g) =>
-          countFor(g, status) > 0 &&
-          (severity === '' || g.severity === severity) &&
-          (category === '' || g.category === category),
-      ),
-    [groups.data, severity, category, status],
+      (groups.data ?? [])
+        .filter(
+          (g) =>
+            countFor(g, status) > 0 &&
+            (severity === '' || g.severity === severity) &&
+            (category === '' || g.category === category),
+        )
+        .sort((a, b) => compareGroups(a, b, sort, status)),
+    [groups.data, severity, category, status, sort],
   )
 
   const tabCounts = useMemo(() => {
@@ -181,7 +232,13 @@ export function CrawlPage({ crawlId }: { crawlId: string }) {
         {groups.error && <ErrorBox message={groups.error} onRetry={groups.reload} />}
         {groups.data && visible.length === 0 && <Empty>Bu filtreye uyan bulgu yok.</Empty>}
         {visible.length > 0 && (
-          <IssueGroupTable crawlId={crawlId} groups={visible} status={status} />
+          <IssueGroupTable
+            crawlId={crawlId}
+            groups={visible}
+            status={status}
+            sort={sort}
+            onSort={setSort}
+          />
         )}
       </Card>
     </div>
@@ -274,20 +331,32 @@ function IssueGroupTable({
   crawlId,
   groups,
   status,
+  sort,
+  onSort,
 }: {
   crawlId: string
   groups: IssueGroup[]
   status: StatusFilter
+  sort: Sort
+  onSort: (sort: Sort) => void
 }) {
+  // Ayni sutuna tekrar tiklamak yonu cevirir; baska sutun kendi dogal yonuyle baslar.
+  const select = (key: SortKey) =>
+    onSort(
+      sort.key === key
+        ? { key, dir: sort.dir === 'asc' ? 'desc' : 'asc' }
+        : { key, dir: firstDir[key] },
+    )
+
   return (
     <div className="table-wrap">
       <table className="table">
         <thead>
           <tr>
-            <th>Şiddet</th>
-            <th>Kural</th>
-            <th>Kategori</th>
-            <th>Bulgu</th>
+            <SortHeader label="Şiddet" sortKey="severity" sort={sort} onSelect={select} />
+            <SortHeader label="Kural" sortKey="rule" sort={sort} onSelect={select} />
+            <SortHeader label="Kategori" sortKey="category" sort={sort} onSelect={select} />
+            <SortHeader label="Bulgu" sortKey="count" sort={sort} onSelect={select} />
             <th />
           </tr>
         </thead>
@@ -303,6 +372,34 @@ function IssueGroupTable({
         </tbody>
       </table>
     </div>
+  )
+}
+
+/** Tiklanabilir sutun basligi. Aktif sutunda yon oku, ekran okuyucu icin aria-sort. */
+function SortHeader({
+  label,
+  sortKey,
+  sort,
+  onSelect,
+}: {
+  label: string
+  sortKey: SortKey
+  sort: Sort
+  onSelect: (key: SortKey) => void
+}) {
+  const active = sort.key === sortKey
+
+  return (
+    <th aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}>
+      <button
+        type="button"
+        className={`th-sort ${active ? 'active' : ''}`}
+        onClick={() => onSelect(sortKey)}
+      >
+        {label}
+        <span className="th-arrow">{active ? (sort.dir === 'asc' ? '▲' : '▼') : '⇅'}</span>
+      </button>
+    </th>
   )
 }
 
