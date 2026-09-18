@@ -99,6 +99,29 @@ Playwright tarayicisi — yalnizca `renderJs: true` kullanilacaksa, bir kez:
 pwsh src/SeoCopilot.Api/bin/Debug/net10.0/playwright.ps1 install chromium
 ```
 
+## CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) her PR'da ve `main`'e her push'ta kosar;
+hicbir sey yayinlamaz. Uc paralel job:
+
+| Job | Ne yapar |
+|---|---|
+| `backend` | Release build → migration drift kontrolu → `Category!=Live` testleri (Postgres Testcontainers ile, bu yuzden ubuntu). TRX + coverage artifact olarak yuklenir |
+| `web` | `npm ci` → `npm run lint` → `npm run build` |
+| `docker` | `api` ve `web` imajlarini push etmeden build eder (GHA cache'li) |
+
+SDK surumu [`global.json`](global.json), `dotnet-ef` surumu [`dotnet-tools.json`](dotnet-tools.json)
+ile sabit. Ayni kontrolleri yerelde calistirmak icin:
+
+```bash
+dotnet tool restore
+dotnet ef migrations has-pending-model-changes --project src/SeoCopilot.Infrastructure --startup-project src/SeoCopilot.Infrastructure
+dotnet test SeoCopilot.slnx --filter "Category!=Live"
+```
+
+Migration drift adimi, entity/konfigurasyon degisip `dotnet ef migrations add` unutuldugunda kirilir.
+Bagimlilik guncellemeleri [`dependabot.yml`](.github/dependabot.yml) ile haftalik gelir.
+
 ## Auth
 
 JWT bearer + rotasyonlu refresh token. Sifreler **bcrypt** (work factor 12).

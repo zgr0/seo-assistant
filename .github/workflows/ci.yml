@@ -1,0 +1,132 @@
+# CI: her PR'da ve main'e her push'ta backend, web ve Docker imajlari dogrulanir.
+# Hicbir sey yayinlanmaz (imajlar push edilmez, deploy yok).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Ayni branch'e yeni commit gelince eski kosu iptal edilir.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  backend:
+    name: Backend (build + test)
+    # Linux sart: Api.Tests Postgres'i Testcontainers ile kaldiriyor, Windows runner
+    # Linux konteyneri calistiramaz.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      # setup-dotnet'in kendi cache'i packages.lock.json istiyor; repo'da yok, elle cache.
+      - uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Directory.Build.props', 'global.json', 'dotnet-tools.json') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        run: |
+          dotnet tool restore
+          dotnet restore SeoCopilot.slnx
+
+      - name: Build
+        run: dotnet build SeoCopilot.slnx --configuration Release --no-restore
+
+      # Model degisip migration eklenmeyi unutulursa kirilir. Veritabanina baglanmaz;
+      # modeli snapshot ile karsilastirir.
+      - name: Migration drift
+        run: >
+          dotnet ef migrations has-pending-model-changes
+          --project src/SeoCopilot.Infrastructure
+          --startup-project src/SeoCopilot.Infrastructure
+          --configuration Release
+          --no-build
+
+      # Category=Live testleri (Anthropic/FLUX, Chromium PDF) ucretli ya da tarayici
+      # istiyor; anahtar yokken kendileri de atliyor ama filtre fixture'i hic kaldirmaz.
+      - name: Test
+        run: >
+          dotnet test SeoCopilot.slnx
+          --configuration Release
+          --no-build
+          --filter "Category!=Live"
+          --logger trx
+          --results-directory TestResults
+          --collect "XPlat Code Coverage"
+
+      - name: Upload test results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: TestResults
+          if-no-files-found: warn
+          retention-days: 14
+
+  web:
+    name: Web (lint + build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: src/SeoCopilot.Web
+    steps:
+      - uses: actions/checkout@v7
+
+      # Surum web imajindaki node:22-alpine ile ayni tutulur.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/SeoCopilot.Web/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+  docker:
+    name: Docker (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Api imajinin baglami repo koku: butun katmanlara proje referansi var.
+          - image: api
+            context: .
+            file: src/SeoCopilot.Api/Dockerfile
+          - image: web
+            context: src/SeoCopilot.Web
+            file: src/SeoCopilot.Web/Dockerfile
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Yalniz build: Dockerfile kirilmasi (Playwright kurulumu, chmod vb.) PR'da yakalanir.
+      - uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
