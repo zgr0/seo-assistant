@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SeoCopilot.Application.Abstractions;
+using SeoCopilot.Application.Services.Social;
 using SeoCopilot.Domain.Entities.Content;
 using SeoCopilot.Domain.Enums;
 
@@ -128,6 +129,18 @@ public sealed class ContentRepository(SeoCopilotDbContext db) : IContentReposito
 
         return [.. rows.Select(r => new SocialPostRecord(r.Id, r.PageUrl, r.Input, r.PlatformCode, r.Bodies))];
     }
+
+    /// <summary>jsonb <c>@&gt;</c> filtresi: <c>{"imageSource":"ai"}</c>.</summary>
+    private static readonly string AiImageInput =
+        $$"""{"{{SocialImageSettings.InputKey}}":"{{SocialImageSettings.AiSource}}"}""";
+
+    public Task<int> CountAiImageJobsSinceAsync(
+        Guid tenantId, DateTimeOffset since, CancellationToken ct = default) =>
+        db.ContentJobs.CountAsync(j =>
+            j.TenantId == tenantId
+            && j.Type == ContentJobType.SocialKit
+            && j.CreatedAt >= since
+            && EF.Functions.JsonContains(j.Input, AiImageInput), ct);
 
     public Task DeleteContentJobAsync(Guid jobId, CancellationToken ct = default) =>
         db.ContentJobs.Where(j => j.Id == jobId).ExecuteDeleteAsync(ct);

@@ -120,7 +120,6 @@ dotnet test SeoCopilot.slnx --filter "Category!=Live"
 ```
 
 Migration drift adimi, entity/konfigurasyon degisip `dotnet ef migrations add` unutuldugunda kirilir.
-Bagimlilik guncellemeleri [`dependabot.yml`](.github/dependabot.yml) ile haftalik gelir.
 
 ## Auth
 
@@ -306,11 +305,11 @@ ucretsizdir** (`["site", "card"]`):
 | Kaynak | Icerik | Ucret |
 | --- | --- | --- |
 | `site` | Sayfanin kendi fotografi (`og:image`, sonra govdedeki `<img>`ler), platform oranina ortadan kirpilir: kare 1080x1080, yatay 1200x675 | Yok |
-| `ai` | `imageBrief`'ten [fluxapi.ai Flux Kontext](https://docs.fluxapi.ai) uretimi — `Flux:ApiKey` ister | Kredi |
+| `ai` | `imageBrief`'ten [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/models/flux-2-klein-4b/) `flux-2-klein-4b` uretimi — `CloudflareAi:AccountId` ve `CloudflareAi:ApiToken` ister | Gunluk 10.000 neuron ucretsiz (~90 gorsel), sonrasi ~0.001-0.002 $/gorsel |
 | `card` | Alan adindan turetilen renk gecisli marka karti; hic basarisiz olmaz | Yok |
 
-Yapay zekayi acmak icin kaynak sirasina `ai` eklenir (ör. `["ai", "site", "card"]`); anahtar tanimsizsa
-kaynak sessizce atlanir.
+Otomatik uretimde de yapay zeka istenirse kaynak sirasina `ai` eklenir (ör. `["ai", "site", "card"]`);
+kimlikler tanimsizsa kaynak sessizce atlanir.
 
 **Site fotografi secimi** ([PageImageCandidates](src/SeoCopilot.Application/Services/Social/PageImageCandidates.cs)):
 tarama sayfa basina en fazla 20 gorsel adresi saklar (`pages.image_urls`). Adinda `logo`, `icon`, `flag`
@@ -334,6 +333,25 @@ ve `prompt` alanina (site fotografinin adresi) yazilir; galeri bunu etiket olara
 Gorsel **zorunlu degildir**: hicbir kaynak sonuc vermezse gonderi metni yine de `done` olur, varyant
 gorselsiz kalir.
 
+### Yapay zeka ile uret
+
+Kimlikler tanimliysa sosyal medya sayfasindaki formda **"Yapay zeka ile uret"** dugmesi gorunur
+(`POST /api/social/kits` govdesinde `aiImages: true`). O paketin islerinde kaynak sirasi ayarlardan
+bagimsiz olarak `["ai", "site", "card"]` olur: uretim basarisiz olursa (kota, zaman asimi, hata) gonderi
+sitenin fotografini, o da yoksa marka kartini alir — gorselsiz kalmaz. Normal "Gonderileri uret" dugmesi
+ayarlardaki ucretsiz siradan sasmaz.
+
+- **Gunluk sinir:** `SocialImages:MaxAiImagesPerDay` (varsayilan 20) kiraci basina, UTC gun basindan beri
+  `aiImages` ile acilan is sayisi. Cloudflare kotasi hesap genelidir; sinir tek kiracinin hepsini
+  harcamasini onler. Asilirsa istek 409 doner ve hic is acilmaz. `GET /api/social/image-settings`
+  `{aiEnabled, dailyLimit, usedToday}` doner — form dugmeyi ve sayaci buna gore gosterir.
+- **Fotografsiz sablonlar** (`Poster`, `Quote`) yalniz secildiyse AI istegi 400 doner: bu sablonlar marka
+  karti zemini ister.
+- **Kurulum:** Cloudflare panelinde hesap kimligi (Workers AI > "Use REST API") ve `Workers AI` Read + Edit
+  izinli bir API token'i `.env`'e `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` olarak yazilir.
+- **Istem dili:** model brief'i Ingilizce yazar; LLM kapaliyken tarama verisinden uretilen brief Turkce
+  sayfa metni icerebilir (Cloudflare ceviri yapmaz). Kalite `LiveGenerationTests` ile goz denetlenir.
+
 ### Gorseldeki yazi
 
 Modelden **yazisiz** gorsel istenir (`no text, no letters`) — Turkce glifleri bozuk cizer ve yerlesim
@@ -347,7 +365,7 @@ cagrisi yapilmaz**. Her gorsel icin iki satir yazilir:
 | `captioned` | Uzerine yazi basilmis kopya; `source_asset_id` ham surumu isaret eder |
 
 Varyant `image_asset_id` ile yazili surumu gosterir, arayuz "Yazisiz surum" secenegi sunar. Baslik
-degisirse ham surumden yeniden basilabilir — yeni FLUX ucreti dogmaz.
+degisirse ham surumden yeniden basilabilir — yeni uretim ucreti dogmaz.
 
 Yazi tipi (Inter, SIL OFL 1.1) derlemeye gomulur: konteynerin sistem fontlarinda `İ`/`ğ`/`ş` eksik olabilir.
 Native katman `SkiaSharp.NativeAssets.Linux.NoDependencies` ile gelir, `libfontconfig1` kurulumu gerekmez.

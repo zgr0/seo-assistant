@@ -51,6 +51,8 @@ public static class DependencyInjection
                 .Distinct()]
         };
         if (sources is { Length: > 0 }) imageSettings.Sources = [.. sources];
+        if (config.GetValue<int?>($"{SocialImageSettings.Section}:MaxAiImagesPerDay") is int dailyAi)
+            imageSettings.MaxAiImagesPerDay = dailyAi;
         services.AddSingleton(imageSettings);
 
         services.Configure<SiteImageFetcherOptions>(o =>
@@ -72,11 +74,11 @@ public static class DependencyInjection
         services.Configure<PsiOptions>(config.GetSection(PsiOptions.Section));
         services.Configure<SmtpOptions>(config.GetSection(SmtpOptions.Section));
 
-        services.Configure<FluxOptions>(config.GetSection(FluxOptions.Section));
+        services.Configure<CloudflareAiOptions>(config.GetSection(CloudflareAiOptions.Section));
 
         services.AddHttpClient<IAnthropicClient, AnthropicClient>();
         services.AddHttpClient<IPageSpeedClient, PsiClient>();
-        services.AddHttpClient<IImageGenerator, FluxImageClient>();
+        services.AddHttpClient<IImageGenerator, CloudflareImageClient>();
         services.AddScoped<IEmailSender, SmtpEmailSender>();
 
         return services;

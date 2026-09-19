@@ -60,7 +60,7 @@ jobs:
           --configuration Release
           --no-build
 
-      # Category=Live testleri (Anthropic/FLUX, Chromium PDF) ucretli ya da tarayici
+      # Category=Live testleri (Anthropic/Cloudflare AI, Chromium PDF) ucretli ya da tarayici
       # istiyor; anahtar yokken kendileri de atliyor ama filtre fixture'i hic kaldirmaz.
       - name: Test
         run: >

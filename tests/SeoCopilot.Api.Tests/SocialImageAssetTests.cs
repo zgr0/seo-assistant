@@ -12,7 +12,7 @@ using SkiaSharp;
 namespace SeoCopilot.Api.Tests;
 
 /// <summary>
-/// Gorsel uretimi sahte istemciyle kosulur: FLUX cagrisi yok, ucret yok. Asil olculen sey
+/// Gorsel uretimi sahte istemciyle kosulur: Cloudflare cagrisi yok, kota harcanmaz. Asil olculen sey
 /// ayni uretimden hem ham hem yazili varligin dogmasi — yazi icin ikinci uretim YAPILMAMALI.
 /// </summary>
 public class SocialImageAssetTests(PostgresFixture fixture) : IClassFixture<PostgresFixture>

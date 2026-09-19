@@ -5,6 +5,7 @@ import {
   favoriteVariant,
   getAssetBlob,
   getContentJob,
+  getSocialImageSettings,
   listBrandProfiles,
   listContentAssets,
   listContentJobs,
@@ -148,10 +149,14 @@ function KitForm({
   const [brandProfileId, setBrandProfileId] = useState('')
   // Bos: tum sablonlar donusumlu.
   const [templates, setTemplates] = useState<ImageTemplate[]>([])
+  // Hangi dugmeye basildi — yalniz o dugme "baslatiliyor" yazar.
+  const [pending, setPending] = useState<'free' | 'ai' | null>(null)
   const { busy, error, run } = useAction()
 
   // Marka profilleri siteye bagli olabilir — site degisince listeyi tazele.
   const brands = useAsync(() => listBrandProfiles(selectedSite), [selectedSite])
+  // Yapay zeka dugmesi: anahtar tanimli mi, gunluk sinirdan ne kaldi.
+  const ai = useAsync(getSocialImageSettings, [])
 
   const changeSite = (id: string) => {
     // Secili profil baska siteye ait olabilir.
@@ -162,19 +167,40 @@ function KitForm({
   const toggle = (code: string) =>
     setSelected((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]))
 
-  const submit = (event: React.FormEvent) => {
-    event.preventDefault()
+  const start = (aiImages: boolean) => {
+    setPending(aiImages ? 'ai' : 'free')
     void run(async () => {
-      const result = await createSocialKit({
-        siteId: selectedSite,
-        platformCodes: selected,
-        postCount,
-        brandProfileId: brandProfileId || undefined,
-        imageTemplates: templates.length > 0 ? templates : undefined,
-      })
-      onCreated(result)
+      try {
+        const result = await createSocialKit({
+          siteId: selectedSite,
+          platformCodes: selected,
+          postCount,
+          brandProfileId: brandProfileId || undefined,
+          imageTemplates: templates.length > 0 ? templates : undefined,
+          aiImages: aiImages || undefined,
+        })
+        onCreated(result)
+      } finally {
+        setPending(null)
+        // Hak is acilirken ayrilir; sinir hatasinda da sayac sunucudaki duruma gelsin.
+        if (aiImages) ai.reload()
+      }
     })
   }
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault()
+    start(false)
+  }
+
+  const cannotStart = busy || selected.length === 0 || !selectedSite
+  const aiLeft = ai.data ? Math.max(0, ai.data.dailyLimit - ai.data.usedToday) : 0
+  // Afis ve alinti marka karti zemini ister — yapay zeka hic cagrilmazdi.
+  const aiBlocked = isCardOnly(templates)
+    ? 'Fotoğrafsız şablonlarla yapay zekâ görseli kullanılamaz'
+    : aiLeft === 0
+      ? 'Bugünkü yapay zekâ görseli sınırı doldu'
+      : null
 
   return (
     <Card className="kit-form">
@@ -232,13 +258,34 @@ function KitForm({
 
         <TemplatePicker value={templates} onChange={setTemplates} />
 
-        <button
-          type="submit"
-          className="btn btn-primary"
-          disabled={busy || selected.length === 0 || !selectedSite}
-        >
-          {busy ? 'Üretim başlatılıyor…' : 'Gönderileri üret'}
-        </button>
+        <div className="kit-actions">
+          <button type="submit" className="btn btn-primary" disabled={cannotStart}>
+            {pending === 'free' ? 'Üretim başlatılıyor…' : 'Gönderileri üret'}
+          </button>
+
+          {/* Anahtar tanimli degilse dugme hic gosterilmez. */}
+          {ai.data?.aiEnabled && (
+            <button
+              type="button"
+              className="btn btn-ai"
+              disabled={cannotStart || aiBlocked !== null}
+              onClick={() => start(true)}
+              title={
+                aiBlocked ??
+                'Görseller yapay zekâyla üretilir; üretilemezse sitenin fotoğrafı kullanılır.'
+              }
+            >
+              {pending === 'ai' ? 'Üretim başlatılıyor…' : '✨ Yapay zekâ ile üret'}
+            </button>
+          )}
+
+          {ai.data?.aiEnabled && (
+            <span className="field-hint">
+              {aiBlocked ??
+                `Yapay zekâ görseli: bugün ${ai.data.usedToday}/${ai.data.dailyLimit} · üretilemezse site fotoğrafı kullanılır`}
+            </span>
+          )}
+        </div>
       </form>
 
       {error && <p className="form-error">{error}</p>}
@@ -260,6 +307,14 @@ const TemplateOptions: {
   { value: 'Quote', label: 'Alıntı', description: 'Fotoğrafsız, sayfadan bir cümle alıntı olarak', photo: false },
 ]
 
+/** Yalniz fotografsiz sablon secildi mi — o zaman fotograf (site ya da yapay zeka) kullanilmaz. */
+function isCardOnly(templates: ImageTemplate[]) {
+  return (
+    templates.length > 0 &&
+    templates.every((t) => !TemplateOptions.find((o) => o.value === t)?.photo)
+  )
+}
+
 /**
  * Gorsel sablonu secimi. Hic secilmezse "Otomatik": sablonlar gonderiler arasinda donusumlu.
  * Birden fazla secilirse yalniz secilenler donusumlu kullanilir.
@@ -276,7 +331,7 @@ function TemplatePicker({
       value.includes(template) ? value.filter((t) => t !== template) : [...value, template],
     )
 
-  const onlyCards = value.length > 0 && value.every((t) => !TemplateOptions.find((o) => o.value === t)?.photo)
+  const onlyCards = isCardOnly(value)
 
   return (
     <div className="field">
@@ -606,7 +661,7 @@ function AssetImage({
   )
 }
 
-/** Yazisiz surum: ayni FLUX uretiminden gelir, ek ucret dogurmaz. */
+/** Yazisiz surum: ayni uretimden gelir, ek ucret dogurmaz. */
 function RawImageLink({ assetId }: { assetId: string }) {
   const [url, setUrl] = useState<string | null>(null)
   const { busy, run } = useAction()

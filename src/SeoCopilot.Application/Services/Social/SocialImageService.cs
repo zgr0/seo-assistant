@@ -9,7 +9,8 @@ namespace SeoCopilot.Application.Services.Social;
 
 /// <summary>
 /// Gonderi gorselini ayarlardaki kaynak sirasiyla bulur (<see cref="SocialImageSettings"/>):
-/// sitenin kendi fotografi, yapay zeka uretimi ya da marka karti. Ilk basarili kaynak
+/// sitenin kendi fotografi, yapay zeka uretimi ya da marka karti. Kullanici yapay zeka
+/// istediyse sira <see cref="SocialImageSettings.AiFirstSources"/> olur. Ilk basarili kaynak
 /// kullanilir, ustune yazi basilir, iki surum de saklanir.
 /// Gorsel zorunlu degildir: hicbir kaynak sonuc vermezse is yine 'done' biter.
 /// </summary>
@@ -61,11 +62,15 @@ public sealed class SocialImageService(
         IReadOnlyCollection<ImageTemplate> templates = chosen.Count > 0 ? chosen : settings.Templates;
         var cardOnly = ImageTemplatePicker.WantsCardOnly(templates);
 
+        // "Yapay zeka ile uret" dugmesi ayarlardaki sirayi ezer; AI dusunce site fotografina gecilir.
+        var sources = WantsAi(input) ? SocialImageSettings.AiFirstSources : settings.Sources;
+
         foreach (var variant in job.Variants.OrderBy(v => v.VariantIndex).Take(MaxImagesPerJob))
         {
             try
             {
-                var (image, prompt) = await ResolveAsync(job, variant, aspect, candidates, seed, cardOnly, ct);
+                var (image, prompt) = await ResolveAsync(
+                    job, variant, aspect, sources, candidates, seed, cardOnly, ct);
                 if (image is null)
                 {
                     logger.LogWarning("Hiçbir kaynak görsel vermedi: iş {JobId}, varyant {Index}",
@@ -120,13 +125,21 @@ public sealed class SocialImageService(
         }
     }
 
+    /// <summary>Kullanici formda "Yapay zeka ile uret" dugmesine bastiysa true.</summary>
+    public static bool WantsAi(JsonElement? input) =>
+        input is JsonElement el
+        && el.ValueKind == JsonValueKind.Object
+        && el.TryGetProperty(SocialImageSettings.InputKey, out var source)
+        && source.ValueKind == JsonValueKind.String
+        && string.Equals(source.GetString(), SocialImageSettings.AiSource, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>Kaynaklari sirayla dener; ilk sonucu ve kaydedilecek istemi/aciklamayi doner.</summary>
     /// <param name="cardOnly">Yalniz fotografsiz sablon secildi — fotograf indirilmez, AI cagrilmaz.</param>
     private async Task<(GeneratedImage? Image, string Prompt)> ResolveAsync(
-        ContentJob job, ContentVariant variant, string aspect, Queue<string> candidates,
-        string seed, bool cardOnly, CancellationToken ct)
+        ContentJob job, ContentVariant variant, string aspect, IReadOnlyList<string> sources,
+        Queue<string> candidates, string seed, bool cardOnly, CancellationToken ct)
     {
-        foreach (var source in settings.Sources)
+        foreach (var source in sources)
         {
             var name = source.Trim().ToLowerInvariant();
             if (cardOnly && name is SocialImageSettings.SiteSource or SocialImageSettings.AiSource) continue;
@@ -147,7 +160,7 @@ public sealed class SocialImageService(
                     if (!generator.IsEnabled) break;
                     var prompt = AiPrompt(job, variant);
                     if (prompt is null) break;
-                    if (await generator.GenerateAsync(prompt, aspect, ct) is { } generated)
+                    if (await TryGenerateAsync(job, prompt, aspect, ct) is { } generated)
                         return (generated, prompt);
                     break;
 
@@ -161,6 +174,27 @@ public sealed class SocialImageService(
         }
 
         return (null, string.Empty);
+    }
+
+    /// <summary>
+    /// Uretici null doner ama beklenmedik bir istisna da siradaki kaynaga gecmeyi engellemesin —
+    /// AI dusunce gonderi site fotografini almali, gorselsiz kalmamali.
+    /// </summary>
+    private async Task<GeneratedImage?> TryGenerateAsync(
+        ContentJob job, string prompt, string aspect, CancellationToken ct)
+    {
+        try
+        {
+            var generated = await generator.GenerateAsync(prompt, aspect, ct);
+            if (generated is null)
+                logger.LogWarning("Yapay zekâ görseli üretilemedi — iş {JobId} sonraki kaynağa geçiyor", job.Id);
+            return generated;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Yapay zekâ görseli hata verdi — iş {JobId} sonraki kaynağa geçiyor", job.Id);
+            return null;
+        }
     }
 
     /// <summary>

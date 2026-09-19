@@ -301,6 +301,15 @@ export interface SocialKitResponse {
   pageUrls: string[]
 }
 
+/** Formdaki "Yapay zekâ ile üret" düğmesinin durumu. */
+export interface SocialImageSettings {
+  /** Cloudflare anahtarı tanımlı mı. */
+  aiEnabled: boolean
+  /** Kiracı başına günlük (UTC) yapay zekâ görseli sınırı. */
+  dailyLimit: number
+  usedToday: number
+}
+
 export interface IssueFilter {
   severity?: string
   minSeverity?: string

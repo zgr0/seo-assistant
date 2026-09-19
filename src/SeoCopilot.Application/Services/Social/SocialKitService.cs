@@ -15,7 +15,9 @@ namespace SeoCopilot.Application.Services.Social;
 public sealed class SocialKitService(
     IContentRepository content,
     ISiteRepository sites,
-    IContentQueue queue)
+    IContentQueue queue,
+    IImageGenerator generator,
+    SocialImageSettings imageSettings)
 {
     /// <summary>Platform basina uretilecek azami gonderi (= secilecek sayfa) sayisi.</summary>
     public const int MaxPostCount = 5;
@@ -34,12 +36,24 @@ public sealed class SocialKitService(
         var platformCodes = NormalizePlatforms(request.PlatformCodes);
         var templates = ImageTemplatePicker.Parse(request.ImageTemplates);
         var postCount = Math.Clamp(request.PostCount ?? DefaultPostCount, 1, MaxPostCount);
+        var aiImages = request.AiImages is true;
 
         if (platformCodes.Count * postCount > MaxJobsPerRequest)
         {
             throw new InvalidOperationException(
                 $"Platform x gönderi sayısı en fazla {MaxJobsPerRequest} olabilir; " +
                 "daha az platform seçin ya da gönderi sayısını düşürün");
+        }
+
+        if (aiImages)
+        {
+            if (!generator.IsEnabled)
+                throw new InvalidOperationException("Yapay zekâ görseli yapılandırılmamış (Cloudflare anahtarı yok)");
+
+            // Afis ve alinti marka karti zemini ister — AI hic cagrilmazdi.
+            var effective = templates.Count > 0 ? templates : imageSettings.Templates;
+            if (ImageTemplatePicker.WantsCardOnly(effective))
+                throw new InvalidOperationException("Fotoğrafsız şablonlarla yapay zekâ görseli kullanılamaz");
         }
 
         _ = await sites.GetSiteForTenantAsync(request.SiteId, tenantId, ct)
@@ -78,6 +92,9 @@ public sealed class SocialKitService(
                 "sayfaların 200 dönmesi, dizine açık olması ve metin içermesi gerekir");
         }
 
+        // Is sayisi sayfa seciminden sonra kesinlesir; sinir o zaman olculur.
+        if (aiImages) await EnsureAiQuotaAsync(tenantId, platformCodes.Count * selected.Count, ct);
+
         // Her sayfada tekrarlanan sablon gorselleri (logo, katalog afisi) site butununden bulunur;
         // worker yalniz kendi sayfasini gordugu icin adaylar burada hesaplanip ise yazilir.
         var siteWideImages = PageImageCandidates.SiteWideImages(pages);
@@ -89,6 +106,29 @@ public sealed class SocialKitService(
             for (var index = 0; index < selected.Count; index++)
             {
                 var (page, kind) = selected[index];
+
+                // Sayfa basina tek gonderi; cesitlilik sayfalardan gelir.
+                // postIndex sablon acisini ve kalibini dondurur: paketteki sira, sayfanin
+                // gecmis kullanimi ve platform sirasi eklenir — ayni sayfa tekrar secildiginde
+                // ya da iki platforma birden yazildiginda ayni metin cikmaz. Worker yine de
+                // gecmisle karsilastirir (bkz. ContentService). pageKind site butunune gore
+                // verilmis turdur — worker sayfayi tek basina yeniden siniflamaz.
+                var input = new JsonObject
+                {
+                    ["variantCount"] = 1,
+                    ["postIndex"] = index + history.UsageOf(page.Url) + platformIndex,
+                    ["pageUrl"] = page.Url,
+                    ["pageKind"] = kind.ToString().ToLowerInvariant(),
+                    ["imageCandidates"] = new JsonArray(
+                        [.. PageImageCandidates.For(page, siteWideImages).Select(u => (JsonNode)u)]),
+                    // Kullanicinin formda sectigi sablonlar; bossa ayarlardaki liste gecerli.
+                    [ImageTemplatePicker.InputKey] = new JsonArray(
+                        [.. templates.Select(t => (JsonNode)t.ToString())])
+                };
+
+                // Worker kaynak sirasini AI -> site -> kart yapar; yoksa ayarlardaki sira gecerli.
+                if (aiImages) input[SocialImageSettings.InputKey] = SocialImageSettings.AiSource;
+
                 jobs.Add(new ContentJob
                 {
                     TenantId = tenantId,
@@ -97,24 +137,7 @@ public sealed class SocialKitService(
                     BrandProfileId = request.BrandProfileId,
                     Type = ContentJobType.SocialKit,
                     PlatformCode = code,
-                    // Sayfa basina tek gonderi; cesitlilik sayfalardan gelir.
-                    // postIndex sablon acisini ve kalibini dondurur: paketteki sira, sayfanin
-                    // gecmis kullanimi ve platform sirasi eklenir — ayni sayfa tekrar secildiginde
-                    // ya da iki platforma birden yazildiginda ayni metin cikmaz. Worker yine de
-                    // gecmisle karsilastirir (bkz. ContentService). pageKind site butunune gore
-                    // verilmis turdur — worker sayfayi tek basina yeniden siniflamaz.
-                    Input = new JsonObject
-                    {
-                        ["variantCount"] = 1,
-                        ["postIndex"] = index + history.UsageOf(page.Url) + platformIndex,
-                        ["pageUrl"] = page.Url,
-                        ["pageKind"] = kind.ToString().ToLowerInvariant(),
-                        ["imageCandidates"] = new JsonArray(
-                            [.. PageImageCandidates.For(page, siteWideImages).Select(u => (JsonNode)u)]),
-                        // Kullanicinin formda sectigi sablonlar; bossa ayarlardaki liste gecerli.
-                        [ImageTemplatePicker.InputKey] = new JsonArray(
-                            [.. templates.Select(t => (JsonNode)t.ToString())])
-                    }.ToJsonString(),
+                    Input = input.ToJsonString(),
                     Status = ContentJobStatus.Queued,
                     CreatedBy = userId
                 });
@@ -134,6 +157,32 @@ public sealed class SocialKitService(
             [.. jobs.Select(j => j.Id)],
             [.. selected.Select(p => p.Page.Url)]);
     }
+
+    /// <summary>Formdaki yapay zeka dugmesi: acik mi, gunluk sinir ve bugun kullanilan.</summary>
+    public async Task<SocialImageSettingsDto> GetImageSettingsAsync(Guid tenantId, CancellationToken ct = default) =>
+        new(generator.IsEnabled,
+            imageSettings.MaxAiImagesPerDay,
+            await content.CountAiImageJobsSinceAsync(tenantId, StartOfTodayUtc(), ct));
+
+    /// <summary>
+    /// Kiracinin bugunku yapay zeka hakki bu paketi karsilamiyorsa 409. Ayni anda gelen iki
+    /// istek sinirin biraz ustune cikabilir — sinir maliyet freni, kesin kota degil.
+    /// </summary>
+    private async Task EnsureAiQuotaAsync(Guid tenantId, int requested, CancellationToken ct)
+    {
+        var limit = imageSettings.MaxAiImagesPerDay;
+        var used = await content.CountAiImageJobsSinceAsync(tenantId, StartOfTodayUtc(), ct);
+        var remaining = Math.Max(0, limit - used);
+
+        if (requested <= remaining) return;
+
+        throw new ConflictException(remaining == 0
+            ? $"Bugünkü yapay zekâ görseli sınırı ({limit}) doldu — yarın tekrar deneyin ya da gönderileri yapay zekâsız üretin"
+            : $"Bugün {remaining} yapay zekâ görseli hakkı kaldı, bu paket {requested} görsel istiyor — " +
+              "gönderi ya da platform sayısını azaltın");
+    }
+
+    private static DateTimeOffset StartOfTodayUtc() => new(DateTime.UtcNow.Date, TimeSpan.Zero);
 
     private static List<string> NormalizePlatforms(List<string>? codes)
     {

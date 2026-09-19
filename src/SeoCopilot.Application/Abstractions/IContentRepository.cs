@@ -59,6 +59,13 @@ public interface IContentRepository
     Task<IReadOnlyList<SocialPostRecord>> ListSocialPostsAsync(
         Guid tenantId, Guid siteId, int take, CancellationToken ct = default);
 
+    /// <summary>
+    /// <paramref name="since"/>'ten beri yapay zeka gorseli istenerek acilan sosyal paket isleri.
+    /// Gorsel degil is sayilir: kuyrukta bekleyen is de hakkini ayirmis olur.
+    /// </summary>
+    Task<int> CountAiImageJobsSinceAsync(
+        Guid tenantId, DateTimeOffset since, CancellationToken ct = default);
+
     /// <summary>Isi ve (veritabani cascade'iyle) varyantlarini ve gorsel kayitlarini siler.</summary>
     Task DeleteContentJobAsync(Guid jobId, CancellationToken ct = default);
 

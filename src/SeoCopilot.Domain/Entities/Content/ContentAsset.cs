@@ -20,7 +20,7 @@ public class ContentAsset
     public ContentAssetKind Kind { get; set; } = ContentAssetKind.Raw;
 
     /// <summary>
-    /// Yazili sürümde, uzerine yazi basilan ham gorsel. Ayni FLUX uretiminden turedigi icin
+    /// Yazili sürümde, uzerine yazi basilan ham gorsel. Ayni uretimden turedigi icin
     /// baslik degisirse yeni uretim yapilmadan yeniden basilabilir.
     /// </summary>
     public Guid? SourceAssetId { get; set; }

@@ -14,7 +14,7 @@ using SeoCopilot.Infrastructure.Persistence;
 namespace SeoCopilot.Api.Tests;
 
 /// <summary>
-/// Sosyal medya paketi ucu. FLUX ve Anthropic anahtarlari tanimsiz oldugundan uretim
+/// Sosyal medya paketi ucu. Cloudflare ve Anthropic anahtarlari tanimsiz oldugundan uretim
 /// arka planda 'failed' olur — testler is kaydini, sayfa secimini ve dogrulamalari olcer.
 /// </summary>
 public class SocialKitApiTests(PostgresFixture fixture) : IClassFixture<PostgresFixture>

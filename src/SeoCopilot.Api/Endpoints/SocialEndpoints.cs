@@ -20,6 +20,11 @@ public static class SocialEndpoints
             return Results.Accepted("/api/content/jobs", result);
         });
 
+        // Formdaki "Yapay zeka ile uret" dugmesi: acik mi, gunluk sinir, bugun kullanilan.
+        group.MapGet("/image-settings", async (
+            ClaimsPrincipal user, SocialKitService social, CancellationToken ct) =>
+            Results.Ok(await social.GetImageSettingsAsync(user.TenantId(), ct)));
+
         return app;
     }
 }

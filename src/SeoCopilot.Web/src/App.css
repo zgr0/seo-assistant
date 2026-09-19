@@ -989,6 +989,24 @@
   margin-bottom: 20px;
 }
 
+.kit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Yapay zeka dugmesi: birincil dugmenin yaninda, ayni vurgu renginde cerceveli. */
+.btn-ai {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--surface);
+}
+
+.btn-ai:hover:not(:disabled) {
+  background: var(--code-bg);
+}
+
 .chip-row {
   display: flex;
   flex-wrap: wrap;

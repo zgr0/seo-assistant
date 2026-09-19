@@ -29,6 +29,7 @@ import type {
   ReportFormat,
   Site,
   SiteVitals,
+  SocialImageSettings,
   SocialKitResponse,
 } from './types.ts'
 
@@ -310,4 +311,9 @@ export const createSocialKit = (input: {
   brandProfileId?: string
   /** Boş ya da verilmezse tüm şablonlar dönüşümlü kullanılır. */
   imageTemplates?: ImageTemplate[]
+  /** Görseller önce yapay zekâyla üretilir; olmazsa site fotoğrafına, o da yoksa marka kartına düşülür. */
+  aiImages?: boolean
 }) => request<SocialKitResponse>('/social/kits', { method: 'POST', body: input })
+
+/** Yapay zekâ düğmesi: açık mı, günlük sınır, bugün kullanılan. */
+export const getSocialImageSettings = () => request<SocialImageSettings>('/social/image-settings')
