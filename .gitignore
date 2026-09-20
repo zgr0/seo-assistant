@@ -64,7 +64,7 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
-# Node / Vite (SeoCopilot.Web)
+# Node / Vite (Sitecraft.Web)
 node_modules/
 dist/
 *.local

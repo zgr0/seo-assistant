@@ -1,0 +1,25 @@
+using Microsoft.Extensions.DependencyInjection;
+using Sitecraft.Application.Services;
+using Sitecraft.Application.Services.Social;
+
+namespace Sitecraft.Application;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddApplication(this IServiceCollection services)
+    {
+        services.AddScoped<CrawlEngine>();
+        services.AddScoped<CrawlOrchestrator>();
+        services.AddScoped<SiteService>();
+        services.AddScoped<AuthService>();
+        services.AddScoped<IssueService>();
+        services.AddScoped<BrandProfileService>();
+        services.AddScoped<ContentService>();
+        services.AddScoped<SocialKitService>();
+        services.AddScoped<SocialImageService>();
+        services.AddScoped<ReportService>();
+        services.AddScoped<VitalsService>();
+        services.AddScoped<DashboardService>();
+        return services;
+    }
+}

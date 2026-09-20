@@ -1,0 +1,26 @@
+using Sitecraft.Application.Abstractions;
+using Sitecraft.Application.Common;
+using Sitecraft.Application.Dtos;
+
+namespace Sitecraft.Application.Services;
+
+/// <summary>Sitenin Core Web Vitals gecmisi (PSI olcumleri crawl sirasinda yazilir).</summary>
+public sealed class VitalsService(ISiteRepository repository)
+{
+    public const int DefaultTake = 30;
+    public const int MaxTake = 200;
+
+    public async Task<SiteVitalsDto> GetAsync(
+        Guid siteId, Guid tenantId, string? url, int? take, CancellationToken ct = default)
+    {
+        _ = await repository.GetSiteForTenantAsync(siteId, tenantId, ct)
+            ?? throw new NotFoundException($"Site {siteId} bulunamadı");
+
+        var history = await repository.ListVitalsAsync(
+            siteId, string.IsNullOrWhiteSpace(url) ? null : url.Trim(),
+            Math.Clamp(take ?? DefaultTake, 1, MaxTake), ct);
+
+        var items = history.Select(VitalDto.From).ToList();
+        return new SiteVitalsDto(siteId, items.FirstOrDefault(), items);
+    }
+}

@@ -1,24 +1,25 @@
-# SeoCopilot
+# Sitecraft
 
-Site tarayan, kural motoruyla SEO skoru cikaran ve rapor maili gonderen servis.
+Site tarayan, kural motoruyla SEO skoru cikaran ve oncelikli rapor ureten servis.
+Bulunan sorunlar icin icerik (title, meta, blog) ve markali sosyal medya gonderileri de uretir.
 
 ## Yapi
 
 ```
-SeoCopilot.slnx
+Sitecraft.slnx
 ├── src/
-│   ├── SeoCopilot.Domain/          Entity, enum, domain kurallari — bagimlilik yok
-│   ├── SeoCopilot.Application/     Servisler, DTO, use-case, arayuzler (Abstractions/)
-│   ├── SeoCopilot.Infrastructure/  EF Core DbContext + repo, AnthropicClient, PsiClient, SmtpEmailSender
-│   ├── SeoCopilot.Crawler/         Playwright + AngleSharp, robots/sitemap, PageExtractor
-│   ├── SeoCopilot.Rules/           Kural motoru + handler'lar + skor hesabi (saf, test edilebilir)
-│   ├── SeoCopilot.Api/             Minimal API, JWT auth, Hangfire dashboard (/hangfire)
-│   └── SeoCopilot.Web/             React + Vite (ayri build, Caddy servis eder)
+│   ├── Sitecraft.Domain/          Entity, enum, domain kurallari — bagimlilik yok
+│   ├── Sitecraft.Application/     Servisler, DTO, use-case, arayuzler (Abstractions/)
+│   ├── Sitecraft.Infrastructure/  EF Core DbContext + repo, AnthropicClient, PsiClient, SmtpEmailSender
+│   ├── Sitecraft.Crawler/         Playwright + AngleSharp, robots/sitemap, PageExtractor
+│   ├── Sitecraft.Rules/           Kural motoru + handler'lar + skor hesabi (saf, test edilebilir)
+│   ├── Sitecraft.Api/             Minimal API, JWT auth, Hangfire dashboard (/hangfire)
+│   └── Sitecraft.Web/             React + Vite (ayri build, Caddy servis eder)
 └── tests/
-    ├── SeoCopilot.Rules.Tests/     Kural + skor birim testleri
-    ├── SeoCopilot.Crawler.Tests/   URL normalizasyon, robots, sitemap, HTML cikarma (ag'siz)
-    ├── SeoCopilot.Auth.Tests/      JWT + bcrypt birim testleri
-    └── SeoCopilot.Api.Tests/       Testcontainers (Postgres) ile entegrasyon
+    ├── Sitecraft.Rules.Tests/     Kural + skor birim testleri
+    ├── Sitecraft.Crawler.Tests/   URL normalizasyon, robots, sitemap, HTML cikarma (ag'siz)
+    ├── Sitecraft.Auth.Tests/      JWT + bcrypt birim testleri
+    └── Sitecraft.Api.Tests/       Testcontainers (Postgres) ile entegrasyon
 ```
 
 ### Bagimlilik yonu
@@ -78,25 +79,25 @@ docker compose down -v          # veriyi de sil
 Postgres gerekli (docker):
 
 ```bash
-docker run -d --name seocopilot-pg -e POSTGRES_DB=seocopilot -e POSTGRES_USER=seocopilot -e POSTGRES_PASSWORD=seocopilot -p 5432:5432 postgres:16-alpine
+docker run -d --name sitecraft-pg -e POSTGRES_DB=sitecraft -e POSTGRES_USER=sitecraft -e POSTGRES_PASSWORD=sitecraft -p 5432:5432 postgres:16-alpine
 ```
 
 API:
 
 ```bash
-dotnet run --project src/SeoCopilot.Api
+dotnet run --project src/Sitecraft.Api
 ```
 
 Web (dev):
 
 ```bash
-cd src/SeoCopilot.Web && npm run dev
+cd src/Sitecraft.Web && npm run dev
 ```
 
 Playwright tarayicisi — yalnizca `renderJs: true` kullanilacaksa, bir kez:
 
 ```bash
-pwsh src/SeoCopilot.Api/bin/Debug/net10.0/playwright.ps1 install chromium
+pwsh src/Sitecraft.Api/bin/Debug/net10.0/playwright.ps1 install chromium
 ```
 
 ## CI
@@ -115,8 +116,8 @@ ile sabit. Ayni kontrolleri yerelde calistirmak icin:
 
 ```bash
 dotnet tool restore
-dotnet ef migrations has-pending-model-changes --project src/SeoCopilot.Infrastructure --startup-project src/SeoCopilot.Infrastructure
-dotnet test SeoCopilot.slnx --filter "Category!=Live"
+dotnet ef migrations has-pending-model-changes --project src/Sitecraft.Infrastructure --startup-project src/Sitecraft.Infrastructure
+dotnet test Sitecraft.slnx --filter "Category!=Live"
 ```
 
 Migration drift adimi, entity/konfigurasyon degisip `dotnet ef migrations add` unutuldugunda kirilir.
@@ -177,11 +178,11 @@ istemcide adetleri tutarsizlastirmadan degistirilebilir.
 
 ### Tarama motoru
 
-[`CrawlEngine`](src/SeoCopilot.Application/Services/CrawlEngine.cs) kesintisiz BFS yapar:
+[`CrawlEngine`](src/Sitecraft.Application/Services/CrawlEngine.cs) kesintisiz BFS yapar:
 
 - **Tohum**: `base_url` + `robots.txt`'deki (yoksa `/sitemap.xml`) sitemap URL'leri. Kok URL robots/desen filtrelerinden muaftir.
-- **robots.txt**: RFC 9309 — ardisik `User-agent` satirlari tek grup, en uzun desen kazanir, esitlikte `Allow` oncelikli, `*`/`$` desteklenir. Kendi token'imiz (`seocopilotbot`) `*`'a gore onceliklidir. Dosya yoksa kisit yok.
-- **Es zamanlilik ve nezaket**: FIFO bir kuyruk (`Channel`) ve `Concurrency` adet surekli calisan getirici — seviye sinirinda beklenmez, yavas bir sayfa digerlerini bosta bekletmez. Kuyruk FIFO oldugu icin sira yine BFS. Nezaket ayri bir hiz butcesidir ([`RequestPacer`](src/SeoCopilot.Application/Common/RequestPacer.cs)): ardisik iki istegin **acilisi** arasinda en az `DelayMs / Concurrency` beklenir — yani her `DelayMs` icinde `Concurrency` istek. Butceyi sayfa getirmeleri, ikili varlik yoklamalari ve gorsel olcumleri paylasir; bekleme yanit suresine eklenmedigi icin yavas bir sayfa digerlerini durdurmaz. `DelayMs = 0` → sinir yok. Getirme paralel, veritabanina yazma tek is parcaciginda.
+- **robots.txt**: RFC 9309 — ardisik `User-agent` satirlari tek grup, en uzun desen kazanir, esitlikte `Allow` oncelikli, `*`/`$` desteklenir. Kendi token'imiz (`sitecraftbot`) `*`'a gore onceliklidir. Dosya yoksa kisit yok.
+- **Es zamanlilik ve nezaket**: FIFO bir kuyruk (`Channel`) ve `Concurrency` adet surekli calisan getirici — seviye sinirinda beklenmez, yavas bir sayfa digerlerini bosta bekletmez. Kuyruk FIFO oldugu icin sira yine BFS. Nezaket ayri bir hiz butcesidir ([`RequestPacer`](src/Sitecraft.Application/Common/RequestPacer.cs)): ardisik iki istegin **acilisi** arasinda en az `DelayMs / Concurrency` beklenir — yani her `DelayMs` icinde `Concurrency` istek. Butceyi sayfa getirmeleri, ikili varlik yoklamalari ve gorsel olcumleri paylasir; bekleme yanit suresine eklenmedigi icin yavas bir sayfa digerlerini durdurmaz. `DelayMs = 0` → sinir yok. Getirme paralel, veritabanina yazma tek is parcaciginda.
 - **Yonlendirme**: elle izlenir (`AllowAutoRedirect=false`), en fazla `Crawler:MaxRedirects` atlama. `status_code` zincirin sonundan, `redirect_to` varilan adresten gelir.
 - **Ayristirma**: yalniz 2xx + `text/html`. Govde `Crawler:MaxHtmlBytes` ile sinirli. `nofollow` linkler `page_links`'e yazilir ama kuyruga alinmaz. 2xx donen HTML disi icerige sayfa kurallari uygulanmaz.
 - **Ikili varliklar**: uzantisi indirilebilir varliga isaret eden ic linkler (`.pdf`, `.zip`, `.jpg`, `.css` ...) sayfa gibi taranmaz. Tarama sonunda yalniz durumlari yoklanir (HEAD; sunucu 405/501 donerse govde okunmadan GET). `pages`'e satir yazilir ki `page_links` hedefi cozulsun ve kirik varlik linki `BROKEN_INTERNAL_LINK` uretsin — ama `MaxPages` butcesinden dusmez, `pages_crawled`'a sayilmaz ve skoru sulandirmaz. Tavan `maxAssetChecks`.
@@ -201,8 +202,8 @@ Sayfa basina en fazla `Crawler:MaxImageChecksPerPage` gorselin indirme boyutu HE
 
 ### Kurallar ve skor
 
-Kurallar iki kumede calisir: **sayfa basina** ([`RuleEngine`](src/SeoCopilot.Rules/RuleEngine.cs), tek sayfanin
-kendi verisine bakar) ve **crawl basina** ([`CrawlRules`](src/SeoCopilot.Rules/CrawlRules.cs), tum sayfa/link
+Kurallar iki kumede calisir: **sayfa basina** ([`RuleEngine`](src/Sitecraft.Rules/RuleEngine.cs), tek sayfanin
+kendi verisine bakar) ve **crawl basina** ([`CrawlRules`](src/Sitecraft.Rules/CrawlRules.cs), tum sayfa/link
 kumesine ve site gerceklerine bakar).
 
 | Kategori | Sayfa basina | Crawl basina |
@@ -291,7 +292,7 @@ disi yanit bosa gitmesin diye ham metin tek varyant olarak yazilir. `Anthropic:A
 ### Sosyal medya paketi (`social_kit`)
 
 `POST /api/social/kits` sitenin **son tamamlanmis taramasindan** sayfa secer (ana sayfa once; sonra ic link
-sayisi ve metin uzunlugu — [PageSelector](src/SeoCopilot.Application/Services/Social/PageSelector.cs)) ve
+sayisi ve metin uzunlugu — [PageSelector](src/Sitecraft.Application/Services/Social/PageSelector.cs)) ve
 her `platform x sayfa` icin bir `social_kit` isi acar. Platform basina en fazla 5 gonderi, tek istekte en
 fazla 12 is uretilir (maliyet freni).
 
@@ -311,7 +312,7 @@ ucretsizdir** (`["site", "card"]`):
 Otomatik uretimde de yapay zeka istenirse kaynak sirasina `ai` eklenir (ör. `["ai", "site", "card"]`);
 kimlikler tanimsizsa kaynak sessizce atlanir.
 
-**Site fotografi secimi** ([PageImageCandidates](src/SeoCopilot.Application/Services/Social/PageImageCandidates.cs)):
+**Site fotografi secimi** ([PageImageCandidates](src/Sitecraft.Application/Services/Social/PageImageCandidates.cs)):
 tarama sayfa basina en fazla 20 gorsel adresi saklar (`pages.image_urls`). Adinda `logo`, `icon`, `flag`
 gibi kaliplar gecen ya da SVG/GIF olan dosyalar elenir; **taranan sayfalarin %30'undan fazlasinda tekrarlanan**
 gorseller (ust bilgi logosu, kenar cubugu afisi — `og:image` her sayfada logo olan siteler dahil) sablona
@@ -321,7 +322,7 @@ ait sayilir. Kalan adaylar sirayla indirilir; kisa kenari 400 pikselden kucuk ya
 `image_urls` kolonu sonradan eklendigi icin **eski taramalarda bos**tur — site fotografi icin siteyi yeniden
 taratmak gerekir, o zamana kadar marka karti kullanilir.
 
-**Ic ag korumasi** ([SiteImageFetcher](src/SeoCopilot.Infrastructure/Media/SiteImageFetcher.cs)): gorsel
+**Ic ag korumasi** ([SiteImageFetcher](src/Sitecraft.Infrastructure/Media/SiteImageFetcher.cs)): gorsel
 adresi sayfa icerigidir, yani guvenilmez. Baglanti kurulurken cozulen IP ozel ag, geri dongu, link-local
 (bulut meta veri adresi `169.254.169.254` dahil), CGNAT ya da standart disi port ise istek reddedilir.
 Kontrol soket baglantisinda yapildigi icin DNS yeniden baglama ve ic adrese yonlendirme de engellenir.
@@ -356,7 +357,7 @@ ayarlardaki ucretsiz siradan sasmaz.
 
 Modelden **yazisiz** gorsel istenir (`no text, no letters`) — Turkce glifleri bozuk cizer ve yerlesim
 kontrol edilemez. Baslik ile marka satiri, indirilen ayni baytlar uzerine
-[SkiaSharp](src/SeoCopilot.Infrastructure/Media/SkiaImageComposer.cs) ile basilir; **ikinci bir uretim
+[SkiaSharp](src/Sitecraft.Infrastructure/Media/SkiaImageComposer.cs) ile basilir; **ikinci bir uretim
 cagrisi yapilmaz**. Her gorsel icin iki satir yazilir:
 
 | `content_assets.kind` | Icerik |
@@ -373,9 +374,9 @@ Native katman `SkiaSharp.NativeAssets.Linux.NoDependencies` ile gelir, `libfontc
 
 ### Tasarim sablonlari
 
-Yazili surum bir **tasarim sablonuyla** cizilir ([SkiaPostTemplates](src/SeoCopilot.Infrastructure/Media/SkiaPostTemplates.cs)).
+Yazili surum bir **tasarim sablonuyla** cizilir ([SkiaPostTemplates](src/Sitecraft.Infrastructure/Media/SkiaPostTemplates.cs)).
 Sablon gonderi sirasiyla (`postIndex`) doner; ard arda gonderiler ayni gorunmez. Fotografli ve fotografsiz
-zeminler ayri havuzdan secilir ([ImageTemplatePicker](src/SeoCopilot.Application/Services/Social/ImageTemplatePicker.cs)):
+zeminler ayri havuzdan secilir ([ImageTemplatePicker](src/Sitecraft.Application/Services/Social/ImageTemplatePicker.cs)):
 
 | Sablon | Zemin | Yerlesim |
 | --- | --- | --- |
@@ -424,15 +425,15 @@ onlarca sayfa oluyor ve okunmuyordu.
 
 Oncelik sirasi tahmin degil: bir kural grubunun **kategori icindeki cezasi x kategori agirligi**
 hesaplanir ve cezalar ile agirliklar crawl'in kendi `scoring_snapshot`'indan okunur, boylece eski
-raporlar o gunun agirliklariyla yorumlanir (bkz. [ScoreCalculator](src/SeoCopilot.Rules/ScoreCalculator.cs)).
+raporlar o gunun agirliklariyla yorumlanir (bkz. [ScoreCalculator](src/Sitecraft.Rules/ScoreCalculator.cs)).
 Bu yuzden cok sayfaya yayilmis bir `medium`, iki sayfadaki bir `critical`'in ustunde cikabilir —
 skoru gercekten o daha cok goturuyordur. Yoksayilan bulgular onceliklere girmez.
 
 ### Cikti bicimi
 
-Iki bicim de ayni kaynaktan cikar: [HtmlReportRenderer](src/SeoCopilot.Application/Services/Reporting/HtmlReportRenderer.cs)
+Iki bicim de ayni kaynaktan cikar: [HtmlReportRenderer](src/Sitecraft.Application/Services/Reporting/HtmlReportRenderer.cs)
 harici varlik icermeyen tek parca HTML uretir; `format=pdf` ise bu HTML headless Chromium'da
-basilir ([PlaywrightBrowserPool.PrintPdfAsync](src/SeoCopilot.Crawler/PlaywrightBrowserPool.cs)).
+basilir ([PlaywrightBrowserPool.PrintPdfAsync](src/Sitecraft.Crawler/PlaywrightBrowserPool.cs)).
 Dosya `Reports:Directory` altina `reports/{id}.pdf` ya da `reports/{id}.html` olarak yazilir.
 
 - PDF icin ek bir bagimlilik yok: tarama zaten Chromium calistiriyor, ayni tarayici singleton'i
@@ -447,8 +448,8 @@ Dosya `Reports:Directory` altina `reports/{id}.pdf` ya da `reports/{id}.html` ol
 
 ## Web arayuzu
 
-React + Vite ([src/SeoCopilot.Web](src/SeoCopilot.Web)). Yalniz `react` + `react-dom` bagimliligi var;
-yonlendirme icin ~40 satirlik hash tabanli mini router kullanilir ([src/router.ts](src/SeoCopilot.Web/src/router.ts)) —
+React + Vite ([src/Sitecraft.Web](src/Sitecraft.Web)). Yalniz `react` + `react-dom` bagimliligi var;
+yonlendirme icin ~40 satirlik hash tabanli mini router kullanilir ([src/router.ts](src/Sitecraft.Web/src/router.ts)) —
 statik servis eden Caddy'de sunucu tarafi rewrite gerekmez.
 
 | Rota | Sayfa | Icerik |
@@ -462,7 +463,7 @@ statik servis eden Caddy'de sunucu tarafi rewrite gerekmez.
 Notlar:
 
 - Oturum `localStorage`'da tutulur. `401` alan istek bir kez `/api/auth/refresh` ile yenilenmeyi dener,
-  yenilenemezse oturum dusurulur ve giris ekranina donulur ([src/api/client.ts](src/SeoCopilot.Web/src/api/client.ts)).
+  yenilenemezse oturum dusurulur ve giris ekranina donulur ([src/api/client.ts](src/Sitecraft.Web/src/api/client.ts)).
 - Tarama detayi, durum `queued`/`running` iken 3 saniyede bir ozeti yeniden ceker.
 - Bulgu detayi kural bazindadir: ayni kural onlarca sayfada tetiklenebildigi icin hepsi tek ekranda toplanir.
 - "AI ile detaylandir" `POST /api/content/generate` ile `fix_advice` isi acar ve is bitene kadar yoklar;
@@ -487,12 +488,12 @@ Enum'lar `snake_case` metin olarak saklanir (`SnakeCaseEnumConverter`).
 | Marka & icerik | `brand_profiles`, `platform_profiles` (SEED), `content_jobs`, `content_variants` |
 | Rapor & sistem | `reports`, `audit_logs` (`ip` inet, `payload` jsonb) |
 
-Entity siniflari: [src/SeoCopilot.Domain/Entities](src/SeoCopilot.Domain/Entities) (alt klasorlere ayrilmis).
-EF yapilandirmasi: [src/SeoCopilot.Infrastructure/Persistence](src/SeoCopilot.Infrastructure/Persistence).
+Entity siniflari: [src/Sitecraft.Domain/Entities](src/Sitecraft.Domain/Entities) (alt klasorlere ayrilmis).
+EF yapilandirmasi: [src/Sitecraft.Infrastructure/Persistence](src/Sitecraft.Infrastructure/Persistence).
 
 ### Migration
 
-`InitialCreate` ve `RuleCatalogueRework` uretildi ([Persistence/Migrations](src/SeoCopilot.Infrastructure/Persistence/Migrations)).
+`InitialCreate` ve `RuleCatalogueRework` uretildi ([Persistence/Migrations](src/Sitecraft.Infrastructure/Persistence/Migrations)).
 `RuleCatalogueRework` kural katalogunu yeniler; once yeni kurallari ekler, mevcut `issues` satirlarini yeni
 kodlara tasir (`HTTP_STATUS` → sayfanin durum koduna gore `BROKEN_PAGE_4XX`/`SERVER_ERROR_5XX` gibi), ardindan
 eski kural satirlarini siler. Karsiligi kalmayan `SLOW_TTFB`, `HREFLANG_INVALID` ve esik alti
@@ -508,27 +509,27 @@ Eski skorlar hicbir yerde saklanmadigi icin `Down` geri alamaz.
 Uygulamak icin Postgres calisir olmali:
 
 ```bash
-dotnet ef database update -p src/SeoCopilot.Infrastructure -s src/SeoCopilot.Api
+dotnet ef database update -p src/Sitecraft.Infrastructure -s src/Sitecraft.Api
 ```
 
-Baglanti dizesi: `SEOCOPILOT_DB` ortam degiskeni (tasarim zamani) veya `ConnectionStrings:Postgres` (calisma zamani).
+Baglanti dizesi: `SITECRAFT_DB` ortam degiskeni (tasarim zamani) veya `ConnectionStrings:Postgres` (calisma zamani).
 `citext` uzantisi ilk migration'da olusturulur — DB rolunun `CREATE EXTENSION` yetkisi olmali.
 
 Yeni migration:
 
 ```bash
-dotnet ef migrations add <Ad> -p src/SeoCopilot.Infrastructure -s src/SeoCopilot.Api -o Persistence/Migrations
+dotnet ef migrations add <Ad> -p src/Sitecraft.Infrastructure -s src/Sitecraft.Api -o Persistence/Migrations
 ```
 
 ## Test
 
 ```bash
-dotnet test tests/SeoCopilot.Rules.Tests tests/SeoCopilot.Crawler.Tests tests/SeoCopilot.Auth.Tests
-dotnet test tests/SeoCopilot.Api.Tests    # Docker gerekli
+dotnet test tests/Sitecraft.Rules.Tests tests/Sitecraft.Crawler.Tests tests/Sitecraft.Auth.Tests
+dotnet test tests/Sitecraft.Api.Tests    # Docker gerekli
 ```
 
-`SeoCopilot.Api.Tests` icindeki `CrawlEngineTests`, rastgele portta kucuk bir test sitesi
-([`TestWebSite`](tests/SeoCopilot.Api.Tests/TestWebSite.cs)) ayaga kaldirip taramayi gercek HTTP
+`Sitecraft.Api.Tests` icindeki `CrawlEngineTests`, rastgele portta kucuk bir test sitesi
+([`TestWebSite`](tests/Sitecraft.Api.Tests/TestWebSite.cs)) ayaga kaldirip taramayi gercek HTTP
 ve gercek Postgres uzerinde ucdan uca calistirir.
 
 ## Konfigurasyon (appsettings / user-secrets)

@@ -1,17 +1,17 @@
-name: seocopilot
+name: sitecraft
 
 services:
   db:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-seocopilot}
-      POSTGRES_USER: ${POSTGRES_USER:-seocopilot}
+      POSTGRES_DB: ${POSTGRES_DB:-sitecraft}
+      POSTGRES_USER: ${POSTGRES_USER:-sitecraft}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD .env icinde tanimli olmali}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-seocopilot} -d ${POSTGRES_DB:-seocopilot}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sitecraft} -d ${POSTGRES_DB:-sitecraft}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -23,7 +23,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: src/SeoCopilot.Api/Dockerfile
+      dockerfile: src/Sitecraft.Api/Dockerfile
     restart: unless-stopped
     depends_on:
       db:
@@ -31,7 +31,7 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ConnectionStrings__Postgres: >-
-        Host=db;Port=5432;Database=${POSTGRES_DB:-seocopilot};Username=${POSTGRES_USER:-seocopilot};Password=${POSTGRES_PASSWORD}
+        Host=db;Port=5432;Database=${POSTGRES_DB:-sitecraft};Username=${POSTGRES_USER:-sitecraft};Password=${POSTGRES_PASSWORD}
 
       # Sema acilista kurulur. Tek surum calistigi icin guvenli; olceklerseniz
       # kapatip migration'i ayri bir adima alin.
@@ -39,8 +39,8 @@ services:
 
       # En az 32 bayt olmali, yoksa uygulama acilista hata verip durur.
       Jwt__Key: ${JWT_KEY:?JWT_KEY .env icinde tanimli olmali (en az 32 bayt)}
-      Jwt__Issuer: ${JWT_ISSUER:-seocopilot}
-      Jwt__Audience: ${JWT_AUDIENCE:-seocopilot}
+      Jwt__Issuer: ${JWT_ISSUER:-sitecraft}
+      Jwt__Audience: ${JWT_AUDIENCE:-sitecraft}
 
       # Konteynerde Chromium'un kum havuzu calismaz — RenderJs bu argumansiz acilmaz.
       Crawler__BrowserArgs__0: "--no-sandbox"
@@ -74,7 +74,7 @@ services:
 
   web:
     build:
-      context: ./src/SeoCopilot.Web
+      context: ./src/Sitecraft.Web
     restart: unless-stopped
     depends_on:
       api:

@@ -45,18 +45,18 @@ jobs:
       - name: Restore
         run: |
           dotnet tool restore
-          dotnet restore SeoCopilot.slnx
+          dotnet restore Sitecraft.slnx
 
       - name: Build
-        run: dotnet build SeoCopilot.slnx --configuration Release --no-restore
+        run: dotnet build Sitecraft.slnx --configuration Release --no-restore
 
       # Model degisip migration eklenmeyi unutulursa kirilir. Veritabanina baglanmaz;
       # modeli snapshot ile karsilastirir.
       - name: Migration drift
         run: >
           dotnet ef migrations has-pending-model-changes
-          --project src/SeoCopilot.Infrastructure
-          --startup-project src/SeoCopilot.Infrastructure
+          --project src/Sitecraft.Infrastructure
+          --startup-project src/Sitecraft.Infrastructure
           --configuration Release
           --no-build
 
@@ -64,7 +64,7 @@ jobs:
       # istiyor; anahtar yokken kendileri de atliyor ama filtre fixture'i hic kaldirmaz.
       - name: Test
         run: >
-          dotnet test SeoCopilot.slnx
+          dotnet test Sitecraft.slnx
           --configuration Release
           --no-build
           --filter "Category!=Live"
@@ -87,7 +87,7 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
-        working-directory: src/SeoCopilot.Web
+        working-directory: src/Sitecraft.Web
     steps:
       - uses: actions/checkout@v7
 
@@ -96,7 +96,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: src/SeoCopilot.Web/package-lock.json
+          cache-dependency-path: src/Sitecraft.Web/package-lock.json
 
       - run: npm ci
       - run: npm run lint
@@ -113,10 +113,10 @@ jobs:
           # Api imajinin baglami repo koku: butun katmanlara proje referansi var.
           - image: api
             context: .
-            file: src/SeoCopilot.Api/Dockerfile
+            file: src/Sitecraft.Api/Dockerfile
           - image: web
-            context: src/SeoCopilot.Web
-            file: src/SeoCopilot.Web/Dockerfile
+            context: src/Sitecraft.Web
+            file: src/Sitecraft.Web/Dockerfile
     steps:
       - uses: actions/checkout@v7
 

@@ -1,0 +1,16 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Sitecraft.Api/Sitecraft.Api.csproj" />
+    <Project Path="src/Sitecraft.Application/Sitecraft.Application.csproj" />
+    <Project Path="src/Sitecraft.Crawler/Sitecraft.Crawler.csproj" />
+    <Project Path="src/Sitecraft.Domain/Sitecraft.Domain.csproj" />
+    <Project Path="src/Sitecraft.Infrastructure/Sitecraft.Infrastructure.csproj" />
+    <Project Path="src/Sitecraft.Rules/Sitecraft.Rules.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Sitecraft.Api.Tests/Sitecraft.Api.Tests.csproj" />
+    <Project Path="tests/Sitecraft.Auth.Tests/Sitecraft.Auth.Tests.csproj" />
+    <Project Path="tests/Sitecraft.Crawler.Tests/Sitecraft.Crawler.Tests.csproj" />
+    <Project Path="tests/Sitecraft.Rules.Tests/Sitecraft.Rules.Tests.csproj" />
+  </Folder>
+</Solution>
