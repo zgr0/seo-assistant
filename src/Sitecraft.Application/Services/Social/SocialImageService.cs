@@ -54,6 +54,7 @@ public sealed class SocialImageService(
         // Ayni isin varyantlari ayni sayfadan gelir; bir fotograf iki kez kullanilmasin.
         var candidates = new Queue<string>(ImageCandidatesOf(job));
         var seed = ColorSeedOf(job);
+        var brand = await BrandStyleOf(job, ct);
         var input = ContentPrompt.ParseInput(job.Input);
         var postIndex = ContentPrompt.PostIndexOf(input);
 
@@ -70,7 +71,7 @@ public sealed class SocialImageService(
             try
             {
                 var (image, prompt) = await ResolveAsync(
-                    job, variant, aspect, sources, candidates, seed, cardOnly, ct);
+                    job, variant, aspect, sources, candidates, seed, brand, cardOnly, ct);
                 if (image is null)
                 {
                     logger.LogWarning("Hiçbir kaynak görsel vermedi: iş {JobId}, varyant {Index}",
@@ -98,7 +99,8 @@ public sealed class SocialImageService(
                             photo: image.Model != CardModel,
                             hasSubline: caption.Subline is not null,
                             index: postIndex + variant.VariantIndex),
-                        ColorSeed = seed
+                        ColorSeed = seed,
+                        Brand = brand
                     };
                 }
 
@@ -137,7 +139,7 @@ public sealed class SocialImageService(
     /// <param name="cardOnly">Yalniz fotografsiz sablon secildi — fotograf indirilmez, AI cagrilmaz.</param>
     private async Task<(GeneratedImage? Image, string Prompt)> ResolveAsync(
         ContentJob job, ContentVariant variant, string aspect, IReadOnlyList<string> sources,
-        Queue<string> candidates, string seed, bool cardOnly, CancellationToken ct)
+        Queue<string> candidates, string seed, BrandStyle? brand, bool cardOnly, CancellationToken ct)
     {
         foreach (var source in sources)
         {
@@ -165,7 +167,7 @@ public sealed class SocialImageService(
                     break;
 
                 case SocialImageSettings.CardSource:
-                    return (canvas.Card(aspect, seed) with { Model = CardModel }, $"marka kartı: {seed}");
+                    return (canvas.Card(aspect, seed, brand) with { Model = CardModel }, $"marka kartı: {seed}");
 
                 default:
                     logger.LogWarning("Bilinmeyen görsel kaynağı atlandı: {Source}", source);
@@ -209,6 +211,33 @@ public sealed class SocialImageService(
         variant.ImageBrief = PageBriefBuilder.Build(job.Page);
         variant.ImageAlt ??= PageBriefBuilder.BuildAlt(job.Page);
         return variant.ImageBrief;
+    }
+
+    /// <summary>
+    /// Isin marka profilinden gorsel kimlik (renkler, logo); profil ya da kimlik yoksa null.
+    /// Logo is basina bir kez okunur. Okunamazsa (dosya silinmis) gorsel logosuz uretilir.
+    /// </summary>
+    private async Task<BrandStyle?> BrandStyleOf(ContentJob job, CancellationToken ct)
+    {
+        if (job.BrandProfile is not { } profile) return null;
+
+        byte[]? logo = null;
+        if (profile.LogoStorageKey is { } key)
+        {
+            try
+            {
+                logo = await storage.ReadAsync(key, ct);
+                if (logo is null)
+                    logger.LogWarning("Marka logosu depoda yok: {Key} — iş {JobId} logosuz", key, job.Id);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Marka logosu okunamadı: {Key} — iş {JobId} logosuz", key, job.Id);
+            }
+        }
+
+        var style = new BrandStyle(profile.PrimaryColor, profile.AccentColor, logo);
+        return style.IsEmpty ? null : style;
     }
 
     /// <summary>Sitenin alan adi — kart ve tasarim renkleri bir sitede hep ayni kalsin.</summary>

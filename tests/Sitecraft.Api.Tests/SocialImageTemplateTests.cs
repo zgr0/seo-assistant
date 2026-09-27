@@ -191,6 +191,89 @@ public class SocialImageTemplateTests
         Assert.True(ColorDelta(siteA.GetPixel(1150, 20), siteB.GetPixel(1150, 20)) > 20);
     }
 
+    // --- marka kimligi ---
+
+    private static readonly BrandStyle RedBrand = new("#C8102E", null, null);
+
+    [Fact]
+    public void Brand_color_overrides_the_photo_on_panels_and_the_card()
+    {
+        var blue = Solid(new SKColor(40, 60, 200), 1200, 675);
+
+        using var branded = SKBitmap.Decode(Composer.Compose(blue, Caption(ImageTemplate.Split) with { Brand = RedBrand })!.Content);
+        var panel = branded.GetPixel(1150, 20);
+        Assert.True(panel.Red > panel.Green && panel.Red > panel.Blue, "Panel markanın rengini almalı");
+        Assert.True(Luma(panel) < 0.35);
+
+        // Marka karti da markanin renginde; ayni tohumlu markasiz karttan farkli.
+        using var card = SKBitmap.Decode(Canvas.Card("1:1", Seed, RedBrand).Content);
+        using var plain = SKBitmap.Decode(Canvas.Card("1:1", Seed).Content);
+        var corner = card.GetPixel(10, 10);
+        Assert.True(corner.Red > corner.Green && corner.Red > corner.Blue);
+        Assert.True(ColorDelta(corner, plain.GetPixel(10, 10)) > 10);
+    }
+
+    [Fact]
+    public void Light_brand_colors_are_darkened_so_white_text_stays_readable()
+    {
+        var yellow = new BrandStyle("#FFD500", null, null);
+
+        using var bitmap = SKBitmap.Decode(
+            Composer.Compose(Solid(new SKColor(128, 128, 128), 1200, 675), Caption(ImageTemplate.Split) with { Brand = yellow })!.Content);
+        var panel = bitmap.GetPixel(1150, 20);
+
+        Assert.True(Luma(panel) < 0.35, $"Panel çok açık: {panel}");
+        Assert.True(panel.Red > panel.Blue && panel.Green > panel.Blue, "Ton sarı ailesinde kalmalı");
+    }
+
+    [Fact]
+    public void Accent_only_brand_recolors_the_seam_but_the_panel_still_follows_the_photo()
+    {
+        var green = new BrandStyle(null, "#00C853", null);
+        var blue = Solid(new SKColor(40, 60, 200), 1200, 675);
+
+        using var bitmap = SKBitmap.Decode(Composer.Compose(blue, Caption(ImageTemplate.Split) with { Brand = green })!.Content);
+
+        // Yatay Split: panel x=648'de baslar, ek yerinde vurgu seridi.
+        var seam = bitmap.GetPixel(651, 300);
+        Assert.True(seam.Green > seam.Red && seam.Green > seam.Blue, $"Şerit vurgu renginde olmalı: {seam}");
+
+        var panel = bitmap.GetPixel(1150, 20);
+        Assert.True(panel.Blue > panel.Red, "Panel fotoğrafın tonunda kalmalı");
+    }
+
+    [Theory]
+    [InlineData(ImageTemplate.Overlay)]
+    [InlineData(ImageTemplate.Split)]
+    [InlineData(ImageTemplate.Label)]
+    [InlineData(ImageTemplate.Poster)]
+    public void Logo_badge_is_drawn_on_the_brand_line(ImageTemplate template)
+    {
+        var logo = Canvas.NormalizeLogo(GreenLogo(), 512)!.Content;
+        var source = template == ImageTemplate.Poster
+            ? Canvas.Card("1:1", Seed, RedBrand).Content
+            : Solid(new SKColor(120, 120, 120), 1080, 1080);
+
+        // Kirmizi marka: vurgu noktasi da kirmizi — yesil yalniz logodan gelebilir.
+        using var withLogo = SKBitmap.Decode(
+            Composer.Compose(source, Caption(template) with { Brand = RedBrand with { Logo = logo } })!.Content);
+        using var without = SKBitmap.Decode(
+            Composer.Compose(source, Caption(template) with { Brand = RedBrand })!.Content);
+
+        Assert.True(GreenPixels(withLogo) > 40, "Logo çizilmeli");
+        Assert.Equal(0, GreenPixels(without));
+    }
+
+    [Fact]
+    public void Unreadable_logo_falls_back_to_the_dot()
+    {
+        var broken = RedBrand with { Logo = [1, 2, 3] };
+
+        var result = Composer.Compose(Photo("1:1"), Caption(ImageTemplate.Split) with { Brand = broken });
+
+        Assert.NotNull(result);
+    }
+
     [Fact]
     public void Very_long_texts_stay_inside_the_image_without_throwing()
     {
@@ -235,6 +318,37 @@ public class SocialImageTemplateTests
         using var image = SKImage.FromBitmap(bitmap);
         using var data = image.Encode(SKEncodedImageFormat.Jpeg, 95);
         return data.ToArray();
+    }
+
+    /// <summary>Seffaf zeminde genis, parlak yesil yazi logosu.</summary>
+    private static byte[] GreenLogo()
+    {
+        using var bitmap = new SKBitmap(new SKImageInfo(400, 160, SKColorType.Rgba8888, SKAlphaType.Premul));
+        using (var canvas = new SKCanvas(bitmap))
+        using (var paint = new SKPaint { Color = new SKColor(0, 200, 60) })
+        {
+            canvas.Clear(SKColors.Transparent);
+            canvas.DrawRect(20, 20, 360, 120, paint);
+        }
+
+        using var image = SKImage.FromBitmap(bitmap);
+        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
+    }
+
+    /// <summary>Logonun yesiline yakin piksel sayisi (seyrek ornekleme).</summary>
+    private static int GreenPixels(SKBitmap bitmap)
+    {
+        var count = 0;
+        for (var y = 0; y < bitmap.Height; y += 2)
+        {
+            for (var x = 0; x < bitmap.Width; x += 2)
+            {
+                var p = bitmap.GetPixel(x, y);
+                if (p.Green > 150 && p.Red < 90 && p.Blue < 130) count++;
+            }
+        }
+        return count;
     }
 
     private static double ColorDelta(SKColor a, SKColor b) =>

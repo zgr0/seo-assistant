@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Sitecraft.Domain.Entities.Content;
+using Sitecraft.Infrastructure.Persistence.Conventions;
 
 namespace Sitecraft.Infrastructure.Persistence.Configurations;
 
@@ -12,10 +13,25 @@ internal sealed class BrandProfileConfig : IEntityTypeConfiguration<BrandProfile
         b.HasKey(x => x.Id);
         b.Property(x => x.Name).HasMaxLength(200).IsRequired();
         b.Property(x => x.TargetAudience).HasMaxLength(1024);
+        b.Property(x => x.PrimaryColor).HasMaxLength(7);
+        b.Property(x => x.AccentColor).HasMaxLength(7);
+        b.Property(x => x.LogoStorageKey).HasMaxLength(512);
         b.Property(x => x.IsDefault).HasDefaultValue(false);
         b.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
 
+        // Mevcut satirlar migration'da bos sozluk alir.
+        b.Property(x => x.SocialHandles)
+            .HasColumnType("jsonb")
+            .HasDefaultValueSql("'{}'::jsonb")
+            .HasConversion(JsonbDictionary.Converter<string>(), JsonbDictionary.Comparer<string>());
+
         b.HasIndex(x => x.TenantId);
+
+        // Kapsam basina tek varsayilan: site_id null (kiraci geneli) da tek kapsam sayilir.
+        b.HasIndex(x => new { x.TenantId, x.SiteId })
+            .IsUnique()
+            .AreNullsDistinct(false)
+            .HasFilter("is_default");
 
         b.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Cascade);
         b.HasOne(x => x.Site).WithMany().HasForeignKey(x => x.SiteId).OnDelete(DeleteBehavior.SetNull);

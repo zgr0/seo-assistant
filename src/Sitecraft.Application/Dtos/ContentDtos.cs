@@ -5,6 +5,8 @@ namespace Sitecraft.Application.Dtos;
 
 // --- marka profili ---
 
+/// <param name="SocialHandles">Platform kodu -> hesap adi ('@ornek', 'ornek' ya da profil adresi).</param>
+/// <param name="PrimaryColor">'#RRGGBB'; gorsel paneli ve marka karti rengi.</param>
 public record CreateBrandProfileRequest(
     string Name,
     Guid? SiteId = null,
@@ -15,9 +17,16 @@ public record CreateBrandProfileRequest(
     List<string>? DefaultHashtags = null,
     string? TargetAudience = null,
     string? ExtraContext = null,
-    bool? IsDefault = null);
+    bool? IsDefault = null,
+    Dictionary<string, string?>? SocialHandles = null,
+    string? PrimaryColor = null,
+    string? AccentColor = null);
 
-/// <summary>Kismi guncelleme — verilmeyen alanlar korunur.</summary>
+/// <summary>
+/// Kismi guncelleme — verilmeyen (null) alanlar korunur. Metin ve renk alanlarinda bos dize
+/// alani temizler; liste ve sozlukler verilirse tumuyle degisir. <c>siteId: Guid.Empty</c>
+/// profili kiraci geneline tasir.
+/// </summary>
 public record UpdateBrandProfileRequest(
     string? Name = null,
     Guid? SiteId = null,
@@ -28,8 +37,12 @@ public record UpdateBrandProfileRequest(
     List<string>? DefaultHashtags = null,
     string? TargetAudience = null,
     string? ExtraContext = null,
-    bool? IsDefault = null);
+    bool? IsDefault = null,
+    Dictionary<string, string?>? SocialHandles = null,
+    string? PrimaryColor = null,
+    string? AccentColor = null);
 
+/// <param name="HasLogo">Logo baytlari <c>GET /api/brand-profiles/{id}/logo</c> ucundan okunur.</param>
 public record BrandProfileDto(
     Guid Id,
     Guid? SiteId,
@@ -42,7 +55,11 @@ public record BrandProfileDto(
     string? TargetAudience,
     string? ExtraContext,
     bool IsDefault,
-    DateTimeOffset CreatedAt)
+    DateTimeOffset CreatedAt,
+    IReadOnlyDictionary<string, string> SocialHandles,
+    string? PrimaryColor,
+    string? AccentColor,
+    bool HasLogo)
 {
     public static BrandProfileDto From(BrandProfile p) => new(
         p.Id,
@@ -56,7 +73,11 @@ public record BrandProfileDto(
         p.TargetAudience,
         p.ExtraContext,
         p.IsDefault,
-        p.CreatedAt);
+        p.CreatedAt,
+        p.SocialHandles,
+        p.PrimaryColor,
+        p.AccentColor,
+        p.LogoStorageKey is not null);
 }
 
 public record PlatformProfileDto(
@@ -79,6 +100,8 @@ public record PlatformProfileDto(
 /// <summary>
 /// <paramref name="Type"/> = title|meta_description|h1|product_description|blog_outline|
 /// fix_advice|social_post|social_batch|hashtag_set. <paramref name="Input"/> serbest jsonb govde.
+/// <paramref name="BrandProfileId"/> null ise varsayilan profil (bkz. <c>BrandProfileResolver</c>),
+/// <c>Guid.Empty</c> ise profilsiz uretilir.
 /// </summary>
 public record GenerateContentRequest(
     string Type,

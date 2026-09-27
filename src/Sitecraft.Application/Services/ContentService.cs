@@ -19,6 +19,7 @@ namespace Sitecraft.Application.Services;
 public sealed class ContentService(
     IContentRepository content,
     ISiteRepository sites,
+    BrandProfileResolver brands,
     IAnthropicClient llm,
     IContentQueue queue,
     SocialImageService images,
@@ -129,13 +130,35 @@ public sealed class ContentService(
 
             if (result is not null)
             {
+                var rejected = 0;
                 foreach (var variant in ContentResponseParser.Parse(result.Text))
                 {
                     // Model istemdeki eski gonderiyi aynen tekrarladiysa alinmaz; sablona dusulur.
                     if (withImage && history.Contains(variant.Body)) continue;
 
+                    // Istemdeki yasakli ifadeyi kullandiysa da alinmaz (bkz. BrandGuard).
+                    if (!BrandGuard.Apply(variant, job.BrandProfile))
+                    {
+                        rejected++;
+                        continue;
+                    }
+
                     variant.JobId = job.Id;
                     job.Variants.Add(variant);
+                }
+
+                if (rejected > 0)
+                {
+                    logger.LogWarning(
+                        "İş {JobId}: {Count} varyant marka profilinin yasaklı ifadesini içerdiği için atıldı",
+                        job.Id, rejected);
+                }
+
+                // Sosyal pakette sablon devralir; diger turlerde yedek yok — is nedeniyle duser.
+                if (job.Variants.Count == 0 && rejected > 0 && !withImage)
+                {
+                    throw new InvalidOperationException(
+                        "Model yanıtındaki bütün varyantlar marka profilinin yasaklı ifadelerini içeriyordu — yeniden deneyin");
                 }
             }
 
@@ -319,18 +342,12 @@ public sealed class ContentService(
             siteId = page.Crawl?.SiteId;
         }
 
-        if (brandProfileId is Guid brandId)
-        {
-            _ = await content.GetBrandProfileAsync(brandId, tenantId, ct)
-                ?? throw new NotFoundException($"Marka profili {brandId} bulunamadı");
-        }
-
         return new ContentJob
         {
             TenantId = tenantId,
             SiteId = siteId,
             PageId = pageId,
-            BrandProfileId = brandProfileId,
+            BrandProfileId = await brands.ResolveAsync(tenantId, siteId, brandProfileId, ct),
             Type = jobType,
             PlatformCode = platform,
             Input = BuildInput(input, variantCount),
@@ -347,7 +364,9 @@ public sealed class ContentService(
 
     /// <summary>
     /// Isin <c>postIndex</c>'inden baslayip sitede daha once yazilmamis ilk sablon metnini doner.
-    /// Butun kaliplar tukenirse (cok kisa, tek cumlelik sayfa) ilk aday kullanilir ve loglanir.
+    /// Sayfa metni marka profilinin yasakli ifadesini tasiyan kaliplar atlanir. Butun kaliplar
+    /// tukenirse (cok kisa, tek cumlelik sayfa) ilk uygun aday kullanilir ve loglanir; hicbiri
+    /// uygun degilse (baslik yasakli ifade iceriyor) is duser.
     /// </summary>
     private ContentVariant BuildUniqueTemplate(ContentJob job, PlatformProfile? platform, PostHistory history)
     {
@@ -359,14 +378,21 @@ public sealed class ContentService(
         for (var attempt = 0; attempt < MaxTemplateAttempts; attempt++)
         {
             var candidate = PagePostBuilder.Build(page, platform, job.BrandProfile, start + attempt, kind);
+            if (!BrandGuard.Apply(candidate, job.BrandProfile)) continue;
             if (!history.Contains(candidate.Body)) return candidate;
             first ??= candidate;
+        }
+
+        if (first is null)
+        {
+            throw new InvalidOperationException(
+                "Sayfa metni marka profilinin yasaklı ifadelerini içeriyor — bu sayfadan gönderi üretilemedi");
         }
 
         logger.LogWarning(
             "İş {JobId}: sayfa {Url} için yeni şablon metni kalmadı — önceki bir gönderi tekrarlanıyor",
             job.Id, page.Url);
-        return first!;
+        return first;
     }
 
     /// <summary>

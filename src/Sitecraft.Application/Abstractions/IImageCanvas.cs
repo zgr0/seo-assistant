@@ -14,7 +14,15 @@ public interface IImageCanvas
 
     /// <summary>
     /// Duz renk gecisli marka karti. Ayni <paramref name="seed"/> (ör. alan adi) hep ayni
-    /// renkleri verir — bir sitenin kartlari birbirine benzesin.
+    /// renkleri verir — bir sitenin kartlari birbirine benzesin. Markanin ana rengi verilmisse
+    /// kart o renkte cizilir.
     /// </summary>
-    GeneratedImage Card(string aspectRatio, string seed);
+    GeneratedImage Card(string aspectRatio, string seed, BrandStyle? brand = null);
+
+    /// <summary>
+    /// Yuklenen marka logosunu dogrular ve normalize eder: PNG, JPEG ya da WebP olmali; uzun
+    /// kenar <paramref name="maxSide"/>'a indirilir, seffaflik korunarak PNG'ye cevrilir.
+    /// Cozulemeyen, desteklenmeyen bicimdeki ya da asiri buyuk boyutlu gorselde null.
+    /// </summary>
+    GeneratedImage? NormalizeLogo(byte[] source, int maxSide);
 }

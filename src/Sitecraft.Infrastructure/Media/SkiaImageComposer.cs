@@ -164,8 +164,12 @@ public sealed class SkiaImageComposer(
             Subpixel = true
         };
 
+        using var logo = BrandMark.Decode(caption.Brand?.Logo);
+
         var headlineLeading = headlineFont.Size * 1.18f;
-        var brandLeading = string.IsNullOrWhiteSpace(caption.BrandLine) ? 0 : brandFont.Size * 1.6f;
+        // Logo rozeti metinden yuksek — baslikla arasinda biraz daha yer birakilir.
+        var brandLeading = string.IsNullOrWhiteSpace(caption.BrandLine) ? 0
+            : brandFont.Size * (logo is null ? 1.6f : 2.4f);
 
         // Blok alttan yukari yerlesir: once marka satiri, ustunde baslik satirlari.
         var baseline = height - margin;
@@ -174,8 +178,15 @@ public sealed class SkiaImageComposer(
 
         if (caption.BrandLine is { Length: > 0 } brand)
         {
-            paint.Color = brandColor;
-            canvas.DrawText(brand, margin, baseline, SKTextAlign.Left, brandFont, paint);
+            if (logo is not null)
+            {
+                BrandMark.Draw(canvas, logo, brand, margin, baseline, brandFont, brandColor, brandColor);
+            }
+            else
+            {
+                paint.Color = brandColor;
+                canvas.DrawText(brand, margin, baseline, SKTextAlign.Left, brandFont, paint);
+            }
             baseline -= brandLeading;
         }
 

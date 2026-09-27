@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   createSocialKit,
   deleteContentJob,
+  EmptyId,
   favoriteVariant,
   getAssetBlob,
   getContentJob,
@@ -13,12 +14,14 @@ import {
   listSites,
 } from '../api/client.ts'
 import type {
+  BrandProfile,
   ContentAsset,
   ContentJob,
   ContentVariant,
   ImageTemplate,
   PlatformProfile,
 } from '../api/types.ts'
+import { BrandProfilePanel } from '../components/BrandProfilePanel.tsx'
 import { timeAgo } from '../components/format.ts'
 import { Card, Empty, ErrorBox, Field, Spinner } from '../components/ui.tsx'
 import { useAction, useAsync } from '../hooks/useAsync.ts'
@@ -38,6 +41,12 @@ export function SocialPage({ siteId }: { siteId?: string }) {
 
   // Kullanici secmediyse ilk site — turetilir, state'e yazilmaz.
   const selectedSite = chosenSite || sites.data?.[0]?.id || ''
+
+  // Siteye ozel + kiraci geneli profiller: secim kutusu, yonetim paneli ve gonderi rozetleri paylasir.
+  const brands = useAsync(
+    () => (selectedSite ? listBrandProfiles(selectedSite) : Promise.resolve([])),
+    [selectedSite],
+  )
 
   // Yeni paketin tum isleri bitti mi — gecmis ve galeri o an tazelenir.
   const doneCount = polled.filter((j) => j.status === 'Done' || j.status === 'Failed').length
@@ -86,6 +95,9 @@ export function SocialPage({ siteId }: { siteId?: string }) {
         <KitForm
           sites={sites.data.map((s) => ({ id: s.id, name: s.name }))}
           platforms={platforms.data}
+          brands={brands.data ?? []}
+          brandsError={brands.error}
+          onBrandsChanged={brands.reload}
           siteId={selectedSite}
           onSiteChange={(id) => {
             setChosenSite(id)
@@ -108,6 +120,7 @@ export function SocialPage({ siteId }: { siteId?: string }) {
           progress={jobIds.length > 0 ? { done: doneCount, expected: jobIds.length } : null}
           pageUrls={pageUrls}
           platforms={platforms.data ?? []}
+          brands={brands.data ?? []}
           onDeleted={(jobId) => setDeleted((prev) => [...prev, jobId])}
         />
       )}
@@ -128,15 +141,30 @@ export function SocialPage({ siteId }: { siteId?: string }) {
   )
 }
 
+/** Sunucudaki secim sirasi: sitenin varsayilani, yoksa kiraci geneli varsayilan. */
+function defaultBrandOf(brands: BrandProfile[], siteId: string) {
+  return (
+    brands.find((b) => b.isDefault && b.siteId === siteId) ??
+    brands.find((b) => b.isDefault && b.siteId === null)
+  )
+}
+
 function KitForm({
   sites,
   platforms,
+  brands,
+  brandsError,
+  onBrandsChanged,
   siteId,
   onSiteChange,
   onCreated,
 }: {
   sites: { id: string; name: string }[]
   platforms: PlatformProfile[]
+  /** Secili sitenin profilleri ve kiraci geneli profiller. */
+  brands: BrandProfile[]
+  brandsError: string | null
+  onBrandsChanged: () => void
   siteId: string
   onSiteChange: (siteId: string) => void
   onCreated: (result: { jobIds: string[]; pageUrls: string[] }) => void
@@ -146,17 +174,23 @@ function KitForm({
     platforms.length > 0 ? [platforms[0].code] : [],
   )
   const [postCount, setPostCount] = useState(1)
+  // '': varsayilan profil (sunucu cozer), EmptyId: profilsiz, digeri: secilen profil.
   const [brandProfileId, setBrandProfileId] = useState('')
+  const [managing, setManaging] = useState(false)
   // Bos: tum sablonlar donusumlu.
   const [templates, setTemplates] = useState<ImageTemplate[]>([])
   // Hangi dugmeye basildi — yalniz o dugme "baslatiliyor" yazar.
   const [pending, setPending] = useState<'free' | 'ai' | null>(null)
   const { busy, error, run } = useAction()
 
-  // Marka profilleri siteye bagli olabilir — site degisince listeyi tazele.
-  const brands = useAsync(() => listBrandProfiles(selectedSite), [selectedSite])
   // Yapay zeka dugmesi: anahtar tanimli mi, gunluk sinirdan ne kaldi.
   const ai = useAsync(getSocialImageSettings, [])
+
+  const fallbackBrand = defaultBrandOf(brands, selectedSite)
+  // Secilen profil silindiyse ya da listede yoksa varsayilana donulur — turetilir, state'e yazilmaz.
+  const chosenBrand =
+    brandProfileId === EmptyId || brands.some((b) => b.id === brandProfileId) ? brandProfileId : ''
+  const siteName = sites.find((s) => s.id === selectedSite)?.name ?? ''
 
   const changeSite = (id: string) => {
     // Secili profil baska siteye ait olabilir.
@@ -175,7 +209,7 @@ function KitForm({
           siteId: selectedSite,
           platformCodes: selected,
           postCount,
-          brandProfileId: brandProfileId || undefined,
+          brandProfileId: chosenBrand || undefined,
           imageTemplates: templates.length > 0 ? templates : undefined,
           aiImages: aiImages || undefined,
         })
@@ -226,18 +260,43 @@ function KitForm({
             </select>
           </Field>
 
-          <Field label="Marka profili" hint="Boş bırakılırsa varsayılan ton kullanılır">
-            <select value={brandProfileId} onChange={(e) => setBrandProfileId(e.target.value)}>
-              <option value="">— yok —</option>
-              {brands.data?.map((brand) => (
-                <option key={brand.id} value={brand.id}>
-                  {brand.name}
-                  {brand.isDefault ? ' (varsayılan)' : ''}
+          <Field
+            label="Marka profili"
+            hint={
+              fallbackBrand
+                ? 'Seçilmezse varsayılan profil kullanılır'
+                : 'Profil yoksa genel bir kurumsal ton kullanılır'
+            }
+          >
+            <span className="select-with-action">
+              <select value={chosenBrand} onChange={(e) => setBrandProfileId(e.target.value)}>
+                <option value="">
+                  {fallbackBrand ? `Varsayılan: ${fallbackBrand.name}` : '— profil yok —'}
                 </option>
-              ))}
-            </select>
+                {fallbackBrand && <option value={EmptyId}>Profil kullanma</option>}
+                {brands
+                  .filter((brand) => brand.id !== fallbackBrand?.id)
+                  .map((brand) => (
+                    <option key={brand.id} value={brand.id}>
+                      {brand.name}
+                      {brand.siteId ? '' : ' (tüm siteler)'}
+                    </option>
+                  ))}
+              </select>
+              <button
+                type="button"
+                className={`btn btn-ghost ${managing ? 'chip-on' : ''}`.trim()}
+                onClick={() => setManaging((open) => !open)}
+                aria-expanded={managing}
+                disabled={!selectedSite}
+              >
+                Yönet
+              </button>
+            </span>
           </Field>
         </div>
+
+        {brandsError && <p className="form-error">Marka profilleri yüklenemedi: {brandsError}</p>}
 
         <div className="field">
           <span className="field-label">Platformlar</span>
@@ -289,6 +348,22 @@ function KitForm({
       </form>
 
       {error && <p className="form-error">{error}</p>}
+
+      {/* Formun disinda: panelin kendi formu var, ic ice form gecersiz. */}
+      {managing && selectedSite && (
+        <BrandProfilePanel
+          siteId={selectedSite}
+          siteName={siteName}
+          profiles={brands}
+          platforms={platforms}
+          onChanged={(created) => {
+            onBrandsChanged()
+            // Yeni profil varsayilan degilse secim ona gecer; varsayilansa '' zaten onu secer.
+            if (created && !created.isDefault) setBrandProfileId(created.id)
+          }}
+          onClose={() => setManaging(false)}
+        />
+      )}
     </Card>
   )
 }
@@ -451,6 +526,7 @@ function Results({
   progress,
   pageUrls,
   platforms,
+  brands,
   onDeleted,
 }: {
   jobs: ContentJob[]
@@ -458,6 +534,8 @@ function Results({
   progress: { done: number; expected: number } | null
   pageUrls: string[]
   platforms: PlatformProfile[]
+  /** Gonderinin hangi profille yazildigini gostermek icin. */
+  brands: BrandProfile[]
   onDeleted: (jobId: string) => void
 }) {
   const running = progress !== null && progress.done < progress.expected
@@ -491,6 +569,7 @@ function Results({
                 job={job}
                 variant={variant}
                 platform={platforms.find((p) => p.code === job.platformCode)}
+                brandName={brands.find((b) => b.id === job.brandProfileId)?.name}
                 onDeleted={onDeleted}
               />
             ))
@@ -505,11 +584,14 @@ function PostCard({
   job,
   variant,
   platform,
+  brandName,
   onDeleted,
 }: {
   job: ContentJob
   variant: ContentVariant
   platform?: PlatformProfile
+  /** Profil silinmisse ya da profilsiz uretildiyse bos. */
+  brandName?: string
   onDeleted: (jobId: string) => void
 }) {
   const [favorite, setFavorite] = useState(variant.isFavorite)
@@ -543,6 +625,11 @@ function PostCard({
       <div className="post-head">
         <span className="badge">{platform?.displayName ?? job.platformCode}</span>
         {variant.angle && <span className="badge">{variant.angle.replace(/_/g, ' ')}</span>}
+        {brandName && (
+          <span className="badge badge-brand" title="Marka profili">
+            {brandName}
+          </span>
+        )}
         <button
           type="button"
           className={`btn btn-ghost btn-sm ${favorite ? 'fav-on' : ''}`.trim()}

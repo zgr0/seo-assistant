@@ -11,6 +11,7 @@ import {
 import type {
   AuthResult,
   BrandProfile,
+  BrandProfileInput,
   ContentAsset,
   ContentJob,
   ContentVariant,
@@ -48,6 +49,8 @@ export class ApiError extends Error {
 interface RequestOptions {
   method?: string
   body?: unknown
+  /** multipart/form-data govdesi (dosya yukleme); sinir (boundary) basligini tarayici yazar. */
+  form?: FormData
   /** Refresh akisinin kendini tetiklememesi icin. */
   anonymous?: boolean
 }
@@ -101,7 +104,7 @@ async function send(path: string, options: RequestOptions): Promise<Response> {
   return fetch(`${base}${path}`, {
     method: options.method ?? 'GET',
     headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body: options.form ?? (options.body === undefined ? undefined : JSON.stringify(options.body)),
   })
 }
 
@@ -301,13 +304,50 @@ export const getAssetBlob = (assetId: string) => requestBlob(`/content/assets/${
 
 export const listPlatformProfiles = () => request<PlatformProfile[]>('/platform-profiles')
 
+/**
+ * Sunucuda Guid.Empty: profil güncellemesinde "kiracı geneline taşı", üretimde "profil kullanma".
+ * Alan hiç gönderilmezse (undefined) güncellemede korunur, üretimde varsayılan profil seçilir.
+ */
+export const EmptyId = '00000000-0000-0000-0000-000000000000'
+
+/** Siteye özel profiller ve kiracı geneli profiller; varsayılanlar önce. */
 export const listBrandProfiles = (siteId?: string) =>
   request<BrandProfile[]>(`/brand-profiles${query({ siteId })}`)
+
+export const createBrandProfile = (input: BrandProfileInput) =>
+  request<BrandProfile>('/brand-profiles', {
+    method: 'POST',
+    body: { ...input, siteId: input.siteId ?? undefined },
+  })
+
+/** Formun tamamı gönderilir: listeler ve hesaplar tümüyle değişir, boş metin temizler. */
+export const updateBrandProfile = (id: string, input: BrandProfileInput) =>
+  request<BrandProfile>(`/brand-profiles/${id}`, {
+    method: 'PATCH',
+    body: { ...input, siteId: input.siteId ?? EmptyId },
+  })
+
+/** Profil ve logosu silinir; profille üretilmiş gönderiler kalır. */
+export const deleteBrandProfile = (id: string) =>
+  request<void>(`/brand-profiles/${id}`, { method: 'DELETE' })
+
+/** PNG, JPEG ya da WebP, en fazla 2 MB; sunucu 512 px'e indirip saydam PNG saklar. */
+export const uploadBrandLogo = (id: string, file: File) => {
+  const form = new FormData()
+  form.append('file', file)
+  return request<BrandProfile>(`/brand-profiles/${id}/logo`, { method: 'PUT', form })
+}
+
+export const getBrandLogoBlob = (id: string) => requestBlob(`/brand-profiles/${id}/logo`)
+
+export const deleteBrandLogo = (id: string) =>
+  request<void>(`/brand-profiles/${id}/logo`, { method: 'DELETE' })
 
 export const createSocialKit = (input: {
   siteId: string
   platformCodes: string[]
   postCount?: number
+  /** Verilmezse sitenin (yoksa hesabın) varsayılan profili; {@link EmptyId} profilsiz. */
   brandProfileId?: string
   /** Boş ya da verilmezse tüm şablonlar dönüşümlü kullanılır. */
   imageTemplates?: ImageTemplate[]

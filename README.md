@@ -152,7 +152,7 @@ Tum `/api/sites` ve `/api/crawls` uclari token'daki `tenant_id` ile sinirlanir �
 | `POST /api/sites` | `{name,baseUrl,crawlSettings?}` → yeni site. `baseUrl` normalize edilir (sema+host, sonda `/` yok) |
 | `GET /api/sites` | Kiracinin siteleri |
 | `GET /api/sites/{id}` | Tek site |
-| `PATCH /api/sites/{id}` | Kismi guncelleme: `name`, `baseUrl`, `isActive`, `scheduleCron`, `defaultBrandProfileId`, `crawlSettings` |
+| `PATCH /api/sites/{id}` | Kismi guncelleme: `name`, `baseUrl`, `isActive`, `scheduleCron`, `crawlSettings`. Sitenin varsayilan marka profili profilde tutulur (`isDefault` + `siteId`) |
 | `DELETE /api/sites/{id}` | Siteyi ve tarama gecmisini siler (`204`) |
 | `PATCH /api/sites/{id}/crawl-settings` | Kismi guncelleme — verilmeyen alanlar korunur |
 | `POST /api/sites/{id}/crawls` | Tarama baslatir → `{crawlId}` |
@@ -268,8 +268,12 @@ puanlama ileride degisse de gecmis taramalar yorumlanabilir.
 | Endpoint | Aciklama |
 | --- | --- |
 | `GET /api/brand-profiles?siteId=` | Kiracinin marka profilleri; `siteId` verilirse o siteye ozel + kiraci geneli profiller |
-| `POST /api/brand-profiles` | `{name, siteId?, tone?, addressForm?, emojiUsage?, bannedPhrases[], defaultHashtags[], targetAudience?, extraContext?, isDefault?}` |
-| `PATCH /api/brand-profiles/{id}` | Kismi guncelleme |
+| `POST /api/brand-profiles` | `{name, siteId?, tone?, addressForm?, emojiUsage?, bannedPhrases[], defaultHashtags[], targetAudience?, extraContext?, isDefault?, socialHandles?, primaryColor?, accentColor?}` |
+| `PATCH /api/brand-profiles/{id}` | Kismi guncelleme — metin/renkte `""` alani temizler, liste ve `socialHandles` tumuyle degisir, `siteId: 00000000-…` profili kiraci geneline tasir |
+| `DELETE /api/brand-profiles/{id}` | Profili ve logosunu siler (`204`); profille uretilmis isler kalir, baglanti kopar |
+| `PUT /api/brand-profiles/{id}/logo` | `multipart/form-data`, alan `file`: PNG/JPEG/WebP, en fazla 2 MB (SVG yok). Uzun kenar 512 px'e indirilip seffaf PNG saklanir |
+| `GET /api/brand-profiles/{id}/logo` | Logo baytlari (`image/png`, `private, no-cache`); logo yoksa `404` |
+| `DELETE /api/brand-profiles/{id}/logo` | Logoyu kaldirir (`204`) |
 | `GET /api/platform-profiles` | Seed listesi (instagram, facebook, x, linkedin) — karakter/hashtag sinirlari ve prompt notu |
 | `POST /api/content/generate` | `{type, platformCode?, pageId?, brandProfileId?, input, variantCount?}` → is kuyruga girer, `201` + is kaydi |
 | `POST /api/content/generate-batch` | `{type, platformCode, pageIds[], brandProfileId?, input?}` → sayfa basina bir is, `202` + `{jobIds}` |
@@ -282,6 +286,34 @@ puanlama ileride degisse de gecmis taramalar yorumlanabilir.
 
 `type` = `title` · `meta_description` · `h1` · `product_description` · `blog_outline` · `fix_advice` ·
 `social_post` · `social_batch` · `hashtag_set` · `social_kit`. Sosyal turler icin `platformCode` zorunludur.
+
+**Marka profili secimi.** Her kapsamda (bir site ya da kiraci geneli) en fazla bir `isDefault` profil
+olur. Uretim isi acilirken profil bir kez cozulup ise yazilir:
+
+1. `brandProfileId` verildiyse o profil — kiraciya ait olmali, baska bir siteye bagliysa `400`.
+2. `brandProfileId` = `00000000-0000-0000-0000-000000000000`: profilsiz uretim.
+3. Verilmediyse sitenin varsayilani, yoksa kiracinin varsayilani, o da yoksa profilsiz.
+   Sayfasiz islerde site yoktur, yalniz kiraci varsayilani aranir.
+
+Profil alanlari kayitta normalize edilir: hashtag'lere `#` eklenir ve bosluk/noktalama atilir
+(yazim ve Turkce karakterler korunur, en fazla 10), yasakli ifadeler kirpilip tekillenir (en fazla 50 × 100
+karakter), renkler `#RRGGBB` bicimine, hesap adlari (`@ornek`, profil adresi) yalin ada cevrilir. Hesap
+adlari yalniz tanimli platform kodlari icin kabul edilir; `extraContext` en fazla 2000 karakterdir.
+
+**Marka denetimi.** Istem modele profili anlatir, ama uyulup uyulmadigi uretimden sonra da denetlenir:
+govdesinde, eylem cagrisinda ya da aciklamasinda yasakli ifade (Turkce buyuk/kucuk harf farksiz) gecen
+varyant atilir, yasakli ifade tasiyan hashtag ayiklanir, `emojiUsage: none` ise emojiler silinir. Sosyal
+pakette butun varyantlar atilirsa gonderi sablonla uretilir (sayfa metni yasakli ifade tasiyan kaliplar
+atlanir); diger is turlerinde is `failed` biter. Sablon yolu da profili izler: `satis_odakli` ton satis
+acisiyla acar, `kurumsal`/`teknik` tonda gundelik soru kancalari kullanilmaz, `light`/`heavy` emoji
+kancaya (ve `heavy`'de eylem cagrisina) emoji ekler, link konamayan platformda eylem cagrisi
+`socialHandles`'daki hesaba yonlendirir, marka hashtag'leri yazildigi gibi one alinir.
+
+**Gorsel kimlik.** `primaryColor` verilmisse panel, zemin ve marka karti o renkte cizilir (fotografin
+baskin renginin ve alan adi tohumunun onune gecer). Beyaz metin okunur kalsin diye renk ayni tonda
+koyulastirilir: sari/pastel gibi acik renkler belirgin sekilde koyulasir. `accentColor` vurgu cubugu ve
+noktayi boyar; yalniz vurgu verilirse panel yine fotograftan gelir. Logo varsa marka satirinin basinda
+beyaz rozet icinde basilir; logo dosyasi okunamazsa gorsel logosuz uretilir.
 
 Uretim **senkron degildir**: istek `content_jobs` satirini `queued` olarak yazar ve Hangfire'a atar; worker
 marka profilini, platform kurallarini ve (verilmisse) sayfa baglamini prompt'a enjekte edip Anthropic

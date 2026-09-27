@@ -20,7 +20,21 @@ public interface IContentRepository
 
     Task AddBrandProfileAsync(BrandProfile profile, CancellationToken ct = default);
 
-    /// <summary>Ayni kiraci (ve site) icindeki diger profillerin varsayilan isaretini kaldirir.</summary>
+    /// <summary>SaveChanges ile silinir; profili kullanan islerin baglantisi (FK set null) kopar.</summary>
+    void RemoveBrandProfile(BrandProfile profile);
+
+    /// <summary>
+    /// Kapsamin varsayilani: <paramref name="siteId"/> verilirse once o sitenin, yoksa kiracinin
+    /// (site_id null) varsayilan profili. Hicbiri yoksa null.
+    /// </summary>
+    Task<BrandProfile?> FindDefaultBrandProfileAsync(
+        Guid tenantId, Guid? siteId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Ayni kapsamdaki (kiraci + site; site null ise kiraci geneli) diger profillerin varsayilan
+    /// isaretini kaldirir. SaveChanges beklemeden hemen yazar: kapsam basina tek varsayilan
+    /// tekil indeksle korunur, yeni varsayilan kaydedilmeden once eskisi dusmus olmali.
+    /// </summary>
     Task ClearDefaultBrandProfilesAsync(
         Guid tenantId, Guid? siteId, Guid exceptId, CancellationToken ct = default);
 

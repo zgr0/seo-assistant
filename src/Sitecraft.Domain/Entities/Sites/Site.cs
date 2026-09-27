@@ -18,8 +18,6 @@ public class Site
     /// <summary>null | cron ifadesi (orn. '0 3 * * 1').</summary>
     public string? ScheduleCron { get; set; }
 
-    public Guid? DefaultBrandProfileId { get; set; }
-
     public bool IsActive { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 

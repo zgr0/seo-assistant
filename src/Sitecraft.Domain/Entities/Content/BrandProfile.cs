@@ -25,6 +25,25 @@ public class BrandProfile
     public string? TargetAudience { get; set; }
     public string? ExtraContext { get; set; }
 
+    /// <summary>
+    /// Platform kodu -> hesap adi ('@' olmadan), ör. instagram -> ornekmarka. Link desteklemeyen
+    /// platformda eylem cagrisi profile yonlendirirken kullanilir.
+    /// </summary>
+    public Dictionary<string, string> SocialHandles { get; set; } = [];
+
+    /// <summary>Gorsel paneli ve marka karti rengi, '#RRGGBB'. Yoksa renk fotograftan/alan adindan turetilir.</summary>
+    public string? PrimaryColor { get; set; }
+
+    /// <summary>Vurgu rengi, '#RRGGBB'. Yoksa ana renkten turetilir.</summary>
+    public string? AccentColor { get; set; }
+
+    /// <summary>Logonun depo anahtari (bkz. IAssetStorage); PNG'ye normalize edilmis olarak saklanir.</summary>
+    public string? LogoStorageKey { get; set; }
+
+    /// <summary>
+    /// Kapsamin varsayilani: <see cref="SiteId"/> doluysa o sitenin, bossa kiracinin. Kapsam basina
+    /// en fazla bir varsayilan olur (veritabaninda tekil indeks).
+    /// </summary>
     public bool IsDefault { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

@@ -34,7 +34,6 @@ export interface Site {
   createdAt: string
   crawlSettings: CrawlSettings
   scheduleCron: string | null
-  defaultBrandProfileId: string | null
 }
 
 export type Severity = 'Low' | 'Medium' | 'High' | 'Critical'
@@ -276,19 +275,50 @@ export interface PlatformProfile {
   isActive: boolean
 }
 
+export type BrandTone = 'Kurumsal' | 'Samimi' | 'Teknik' | 'SatisOdakli'
+export type AddressForm = 'Siz' | 'Sen'
+export type EmojiUsage = 'None' | 'Light' | 'Heavy'
+
 export interface BrandProfile {
   id: string
+  /** null: kiracı geneli (tüm sitelerde seçilebilir). */
   siteId: string | null
   name: string
-  tone: string
-  addressForm: string
-  emojiUsage: string
+  tone: BrandTone
+  addressForm: AddressForm
+  emojiUsage: EmojiUsage
   bannedPhrases: string[]
   defaultHashtags: string[]
   targetAudience: string | null
   extraContext: string | null
+  /** Kapsamının (site ya da kiracı geneli) varsayılanı. */
   isDefault: boolean
   createdAt: string
+  /** Platform kodu → hesap adı ('@' olmadan). */
+  socialHandles: Record<string, string>
+  /** '#RRGGBB'. */
+  primaryColor: string | null
+  accentColor: string | null
+  /** Logo baytları ayrı uçtan okunur (yetki başlığı gerekir). */
+  hasLogo: boolean
+}
+
+/** Profil formu — oluşturma ve güncellemede aynı gövde; boş metin alanı temizler. */
+export interface BrandProfileInput {
+  name: string
+  /** null: kiracı geneli. */
+  siteId: string | null
+  tone: BrandTone
+  addressForm: AddressForm
+  emojiUsage: EmojiUsage
+  bannedPhrases: string[]
+  defaultHashtags: string[]
+  targetAudience: string
+  extraContext: string
+  isDefault: boolean
+  socialHandles: Record<string, string>
+  primaryColor: string
+  accentColor: string
 }
 
 /** Gönderi görselinin tasarım şablonu (sunucudaki ImageTemplate). */

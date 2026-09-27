@@ -98,13 +98,15 @@ code {
 
 input,
 select,
+textarea,
 button {
   font: inherit;
   color: inherit;
 }
 
 input,
-select {
+select,
+textarea {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -112,8 +114,14 @@ select {
   width: 100%;
 }
 
+textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
 input:focus-visible,
 select:focus-visible,
+textarea:focus-visible,
 button:focus-visible,
 a:focus-visible {
   outline: 2px solid var(--accent);

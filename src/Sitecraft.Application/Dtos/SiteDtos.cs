@@ -11,7 +11,6 @@ public record UpdateSiteRequest(
     string? BaseUrl = null,
     bool? IsActive = null,
     string? ScheduleCron = null,
-    Guid? DefaultBrandProfileId = null,
     CrawlSettingsDto? CrawlSettings = null);
 
 /// <summary>Kismi guncellemeye izin verir — verilmeyen alanlar mevcut degeri korur.</summary>
@@ -50,8 +49,7 @@ public record SiteDto(
     bool IsActive,
     DateTimeOffset CreatedAt,
     CrawlSettingsDto CrawlSettings,
-    string? ScheduleCron = null,
-    Guid? DefaultBrandProfileId = null)
+    string? ScheduleCron = null)
 {
     public static SiteDto From(Site s) => new(
         s.Id,
@@ -60,6 +58,5 @@ public record SiteDto(
         s.IsActive,
         s.CreatedAt,
         CrawlSettingsDto.From(s.CrawlSettings),
-        s.ScheduleCron,
-        s.DefaultBrandProfileId);
+        s.ScheduleCron);
 }

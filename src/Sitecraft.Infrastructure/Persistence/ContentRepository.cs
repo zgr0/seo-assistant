@@ -28,16 +28,22 @@ public sealed class ContentRepository(SitecraftDbContext db) : IContentRepositor
     public async Task AddBrandProfileAsync(BrandProfile profile, CancellationToken ct = default) =>
         await db.BrandProfiles.AddAsync(profile, ct);
 
-    public async Task ClearDefaultBrandProfilesAsync(
-        Guid tenantId, Guid? siteId, Guid exceptId, CancellationToken ct = default)
-    {
-        var others = await db.BrandProfiles
-            .Where(p => p.TenantId == tenantId && p.SiteId == siteId && p.IsDefault && p.Id != exceptId)
-            .ToListAsync(ct);
+    public void RemoveBrandProfile(BrandProfile profile) => db.BrandProfiles.Remove(profile);
 
-        foreach (var profile in others)
-            profile.IsDefault = false;
-    }
+    public Task<BrandProfile?> FindDefaultBrandProfileAsync(
+        Guid tenantId, Guid? siteId, CancellationToken ct = default) =>
+        db.BrandProfiles
+            .Where(p => p.TenantId == tenantId && p.IsDefault
+                && (p.SiteId == null || (siteId != null && p.SiteId == siteId)))
+            // Siteye ozel varsayilan kiraci genelinin onune gecer.
+            .OrderBy(p => p.SiteId == null)
+            .FirstOrDefaultAsync(ct);
+
+    public Task ClearDefaultBrandProfilesAsync(
+        Guid tenantId, Guid? siteId, Guid exceptId, CancellationToken ct = default) =>
+        db.BrandProfiles
+            .Where(p => p.TenantId == tenantId && p.SiteId == siteId && p.IsDefault && p.Id != exceptId)
+            .ExecuteUpdateAsync(s => s.SetProperty(p => p.IsDefault, false), ct);
 
     public async Task<IReadOnlyList<PlatformProfile>> ListPlatformProfilesAsync(
         bool onlyActive, CancellationToken ct = default)

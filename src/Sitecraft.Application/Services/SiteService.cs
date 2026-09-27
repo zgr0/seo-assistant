@@ -58,8 +58,6 @@ public sealed class SiteService(ISiteRepository repository)
         if (request.IsActive is bool isActive) site.IsActive = isActive;
         if (request.ScheduleCron is not null)
             site.ScheduleCron = string.IsNullOrWhiteSpace(request.ScheduleCron) ? null : request.ScheduleCron.Trim();
-        if (request.DefaultBrandProfileId is Guid brandId)
-            site.DefaultBrandProfileId = brandId == Guid.Empty ? null : brandId;
 
         request.CrawlSettings?.ApplyTo(site.CrawlSettings);
 

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.AspNetCore.Mvc;
 using Sitecraft.Api.Infrastructure;
 using Sitecraft.Application.Common;
 using Sitecraft.Application.Dtos;
@@ -32,6 +33,50 @@ public static class BrandProfileEndpoints
             Guid id, UpdateBrandProfileRequest req, ClaimsPrincipal user,
             BrandProfileService service, CancellationToken ct) =>
             Results.Ok(await service.UpdateAsync(id, user.TenantId(), req, ct)));
+
+        brands.MapDelete("/{id:guid}", async (
+            Guid id, ClaimsPrincipal user, BrandProfileService service, CancellationToken ct) =>
+        {
+            await service.DeleteAsync(id, user.TenantId(), ct);
+            return Results.NoContent();
+        });
+
+        // multipart/form-data, alan adi 'file'. Kimlik Bearer token'la dogrulanir — cerez yok,
+        // CSRF'e acik degil; antiforgery kapatilir (acik kalsa middleware'siz uc hata verir).
+        brands.MapPut("/{id:guid}/logo", async (
+                Guid id, IFormFile file, ClaimsPrincipal user,
+                BrandProfileService service, CancellationToken ct) =>
+            {
+                if (file.Length > BrandProfileService.MaxLogoBytes)
+                {
+                    throw new InvalidOperationException(
+                        $"Logo en fazla {BrandProfileService.MaxLogoBytes / (1024 * 1024)} MB olabilir");
+                }
+
+                using var buffer = new MemoryStream((int)file.Length);
+                await file.CopyToAsync(buffer, ct);
+                return Results.Ok(await service.SetLogoAsync(id, user.TenantId(), buffer.ToArray(), ct));
+            })
+            .DisableAntiforgery()
+            // Govde siniri: dosya + multipart zarfi. Kestrel asan istegi 413 ile keser.
+            .WithMetadata(new RequestSizeLimitAttribute(BrandProfileService.MaxLogoBytes + 64 * 1024));
+
+        brands.MapGet("/{id:guid}/logo", async (
+            Guid id, ClaimsPrincipal user, BrandProfileService service,
+            HttpContext http, CancellationToken ct) =>
+        {
+            var (bytes, contentType) = await service.GetLogoAsync(id, user.TenantId(), ct);
+            // Logo ayni adreste degisebilir — her seferinde dogrulansin.
+            http.Response.Headers.CacheControl = "private, no-cache";
+            return Results.File(bytes, contentType);
+        });
+
+        brands.MapDelete("/{id:guid}/logo", async (
+            Guid id, ClaimsPrincipal user, BrandProfileService service, CancellationToken ct) =>
+        {
+            await service.DeleteLogoAsync(id, user.TenantId(), ct);
+            return Results.NoContent();
+        });
 
         // Seed listesi — kiraciya gore degismez.
         app.MapGet("/api/platform-profiles", async (

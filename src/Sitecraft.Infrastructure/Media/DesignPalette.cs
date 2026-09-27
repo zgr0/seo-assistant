@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Sitecraft.Application.Abstractions;
 using SkiaSharp;
 
 namespace Sitecraft.Infrastructure.Media;
@@ -48,6 +49,70 @@ internal readonly record struct DesignPalette(SKColor Deep, SKColor Dark, SKColo
 
         return FromSeed(seed is { Length: > 0 } ? seed : "sitecraft");
     }
+
+    /// <summary>Panel/zemin rengi en fazla bu aciklikta — ustundeki beyaz metin okunur kalsin.</summary>
+    private const float MaxDeepLightness = 32;
+
+    /// <summary>
+    /// HSL acikligi algiya denk degil: ayni aciklikta sari kirmizidan cok daha parlak gorunur.
+    /// Zemin bu algisal parlakligin (Rec. 601 luma) altina inene kadar koyulastirilir.
+    /// </summary>
+    private const double MaxDeepLuma = 0.28;
+
+    /// <summary>Koyu zemindeki vurgu en az bu aciklikta, beyaz karttaki en fazla bu kadar.</summary>
+    private const float MinAccentOnDarkLightness = 55;
+    private const float MaxAccentOnLightLightness = 42;
+
+    /// <summary>
+    /// Markanin gorsel kimligi: ana renk verilmisse palet ondan kurulur ve fotografin/tohumun
+    /// onune gecer; yalniz vurgu verilmisse <paramref name="fallback"/> paletinin vurgusu degisir.
+    /// Gecersiz renk yok sayilir.
+    /// </summary>
+    public static DesignPalette For(BrandStyle? brand, Func<DesignPalette> fallback)
+    {
+        var primary = Parse(brand?.PrimaryColor);
+        var accent = Parse(brand?.AccentColor);
+
+        if (primary is { } main) return FromBrand(main, accent);
+        return accent is { } only ? fallback().WithAccent(only) : fallback();
+    }
+
+    /// <summary>
+    /// Ton ve doygunluk markadan gelir; aciklik okunurluk icin sinirlanir. Acik bir marka rengi
+    /// (sari, pastel) beyaz metnin arkasinda kaybolmasin diye ayni tonda koyulastirilir, zaten
+    /// koyu renk oldugu gibi kalir.
+    /// </summary>
+    public static DesignPalette FromBrand(SKColor primary, SKColor? accent = null)
+    {
+        primary.ToHsl(out var hue, out var saturation, out var lightness);
+
+        var deep = Math.Min(lightness, MaxDeepLightness);
+        while (deep > 8 && Luma(SKColor.FromHsl(hue, saturation, deep)) > MaxDeepLuma) deep -= 2;
+
+        var palette = new DesignPalette(
+            SKColor.FromHsl(hue, saturation, deep),
+            SKColor.FromHsl((hue + 18) % 360, saturation, deep * 0.6f),
+            SKColor.FromHsl(hue, Math.Max(saturation, 60), 66),
+            SKColor.FromHsl(hue, Math.Max(saturation, 55), 38));
+
+        return accent is { } given ? palette.WithAccent(given) : palette;
+    }
+
+    /// <summary>Vurgu markadan; koyu zeminde ve beyaz kartta okunacak acikliga cekilir.</summary>
+    public DesignPalette WithAccent(SKColor accent)
+    {
+        accent.ToHsl(out var hue, out var saturation, out var lightness);
+        return this with
+        {
+            Accent = SKColor.FromHsl(hue, saturation, Math.Max(lightness, MinAccentOnDarkLightness)),
+            AccentOnLight = SKColor.FromHsl(hue, saturation, Math.Min(lightness, MaxAccentOnLightLightness))
+        };
+    }
+
+    private static double Luma(SKColor c) => ((0.299 * c.Red) + (0.587 * c.Green) + (0.114 * c.Blue)) / 255.0;
+
+    private static SKColor? Parse(string? hex) =>
+        hex is { Length: > 0 } && SKColor.TryParse(hex, out var color) ? color : null;
 
     /// <summary>Doygunluk agirlikli ton histogrami; anlamli renk yoksa null.</summary>
     private static float? DominantHue(SKBitmap bitmap)

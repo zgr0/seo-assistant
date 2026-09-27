@@ -86,6 +86,50 @@ public class ContentApiTests(PostgresFixture fixture) : IClassFixture<PostgresFi
     }
 
     [Fact]
+    public async Task Default_is_unique_per_scope_and_patch_moves_it()
+    {
+        await using var factory = fixture.CreateFactory();
+        var (client, _) = await TestAuth.RegisterAsync(factory, "brand-scope@example.com");
+
+        var site = await client.PostAsJsonAsync("/api/sites", new { name = "Kapsam", baseUrl = "https://kapsam.example.com" });
+        var siteId = (await site.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+
+        async Task<Guid> Create(object body)
+        {
+            var res = await client.PostAsJsonAsync("/api/brand-profiles", body);
+            Assert.Equal(HttpStatusCode.Created, res.StatusCode);
+            return (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetGuid();
+        }
+
+        async Task<bool> IsDefault(Guid id) =>
+            (await client.GetFromJsonAsync<JsonElement>($"/api/brand-profiles/{id}"))
+                .GetProperty("isDefault").GetBoolean();
+
+        var tenantDefault = await Create(new { name = "Genel", isDefault = true });
+        var siteDefault = await Create(new { name = "Site", siteId, isDefault = true });
+
+        // Farkli kapsamlar: siteye ozel varsayilan kiraci varsayilanini dusurmez.
+        Assert.True(await IsDefault(tenantDefault));
+        Assert.True(await IsDefault(siteDefault));
+
+        // Ayni kapsamda PATCH ile varsayilan el degistirir.
+        var other = await Create(new { name = "Site 2", siteId });
+        var patched = await client.PatchAsJsonAsync($"/api/brand-profiles/{other}", new { isDefault = true });
+        Assert.Equal(HttpStatusCode.OK, patched.StatusCode);
+
+        Assert.True(await IsDefault(other));
+        Assert.False(await IsDefault(siteDefault));
+        Assert.True(await IsDefault(tenantDefault));
+
+        // Varsayilan profil kiraci geneline tasininca oranin varsayilanini devralir.
+        var moved = await client.PatchAsJsonAsync($"/api/brand-profiles/{other}", new { siteId = Guid.Empty });
+        Assert.Equal(HttpStatusCode.OK, moved.StatusCode);
+
+        Assert.True(await IsDefault(other));
+        Assert.False(await IsDefault(tenantDefault));
+    }
+
+    [Fact]
     public async Task Invalid_tone_is_400_and_other_tenants_profile_is_404()
     {
         await using var factory = fixture.CreateFactory();

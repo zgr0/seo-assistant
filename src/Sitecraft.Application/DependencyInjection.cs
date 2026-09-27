@@ -14,6 +14,7 @@ public static class DependencyInjection
         services.AddScoped<AuthService>();
         services.AddScoped<IssueService>();
         services.AddScoped<BrandProfileService>();
+        services.AddScoped<BrandProfileResolver>();
         services.AddScoped<ContentService>();
         services.AddScoped<SocialKitService>();
         services.AddScoped<SocialImageService>();

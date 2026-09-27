@@ -11,6 +11,9 @@ namespace Sitecraft.Application.Dtos;
 /// true: gorseller once yapay zekayla uretilir; basarisiz olursa site fotografina, o da yoksa
 /// marka kartina dusulur. Gunluk sinira tabidir (<c>SocialImages:MaxAiImagesPerDay</c>).
 /// </param>
+/// <param name="BrandProfileId">
+/// null: sitenin varsayilan profili, yoksa kiracinin varsayilani. <c>Guid.Empty</c>: profilsiz.
+/// </param>
 public record CreateSocialKitRequest(
     Guid SiteId,
     List<string> PlatformCodes,

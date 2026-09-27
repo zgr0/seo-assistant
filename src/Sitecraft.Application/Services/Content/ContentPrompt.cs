@@ -38,10 +38,16 @@ public static class ContentPrompt
             sb.AppendLine($"- Emoji: {EmojiText(brand.EmojiUsage)}");
             if (brand.TargetAudience is { Length: > 0 }) sb.AppendLine($"- Hedef kitle: {brand.TargetAudience}");
             if (brand.BannedPhrases.Count > 0)
-                sb.AppendLine($"- Kullanılmayacak ifadeler: {string.Join(", ", brand.BannedPhrases)}");
+            {
+                // Denetim sonradan yapilir (bkz. BrandGuard) — ifadeyi iceren varyant atilir.
+                sb.AppendLine($"- Kullanılmayacak ifadeler (metin, eylem çağrısı ve hashtag dahil hiçbir yerde geçmesin): " +
+                    string.Join(", ", brand.BannedPhrases));
+            }
             if (brand.DefaultHashtags.Count > 0)
                 sb.AppendLine($"- Varsayılan hashtag'ler: {string.Join(" ", brand.DefaultHashtags)}");
-            if (brand.ExtraContext is { Length: > 0 }) sb.AppendLine($"- Ek bağlam: {brand.ExtraContext}");
+            if (HandleLine(brand, platform) is { } handles) sb.AppendLine(handles);
+            if (brand.ExtraContext is { Length: > 0 })
+                sb.AppendLine($"- Marka tanıtımı ve ek bağlam: {brand.ExtraContext}");
             sb.AppendLine();
         }
 
@@ -224,6 +230,26 @@ public static class ContentPrompt
         _ => "Sayfa için istenen içeriği üret."
     };
 
+    /// <summary>
+    /// Platform biliniyorsa markanin o platformdaki hesabi — link konamayan platformda eylem cagrisi
+    /// oraya yonlendirir. Platform yoksa butun hesaplar listelenir.
+    /// </summary>
+    private static string? HandleLine(BrandProfile brand, PlatformProfile? platform)
+    {
+        if (brand.SocialHandles.Count == 0) return null;
+
+        if (platform is not null)
+        {
+            return brand.SocialHandles.TryGetValue(platform.Code, out var handle)
+                ? $"- Bu platformdaki hesap: @{handle}" +
+                  (platform.SupportsLinks ? string.Empty : " (link yerine eylem çağrısında bu hesaba yönlendir)")
+                : null;
+        }
+
+        return "- Sosyal hesaplar: " + string.Join(", ",
+            brand.SocialHandles.OrderBy(h => h.Key, StringComparer.Ordinal).Select(h => $"{h.Key} @{h.Value}"));
+    }
+
     private static string ToneText(BrandTone tone) => tone switch
     {
         BrandTone.Kurumsal => "kurumsal, ölçülü",
@@ -236,7 +262,7 @@ public static class ContentPrompt
     private static string EmojiText(EmojiUsage usage) => usage switch
     {
         EmojiUsage.None => "kullanma",
-        EmojiUsage.Light => "az sayıda, yerinde kullan",
+        EmojiUsage.Light => "az sayıda (gönderi başına en fazla 1-2), yerinde kullan",
         EmojiUsage.Heavy => "bol kullan",
         _ => "kullanma"
     };

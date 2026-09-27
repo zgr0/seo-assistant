@@ -101,8 +101,30 @@ Content-Type: application/json
   "addressForm": "sen",
   "emojiUsage": "light",
   "defaultHashtags": ["#seo"],
+  "socialHandles": { "instagram": "@ornekmarka", "linkedin": "https://www.linkedin.com/company/ornek-as/" },
+  "primaryColor": "#1A2B3C",
   "isDefault": true
 }
+
+### Marka profilini sil
+DELETE {{host}}/api/brand-profiles/<profile id>
+Authorization: Bearer {{token}}
+
+### Marka logosu yukle (PNG/JPEG/WebP, en fazla 2 MB)
+PUT {{host}}/api/brand-profiles/<profile id>/logo
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=sitecraft
+
+--sitecraft
+Content-Disposition: form-data; name="file"; filename="logo.png"
+Content-Type: image/png
+
+< ./logo.png
+--sitecraft--
+
+### Marka logosu
+GET {{host}}/api/brand-profiles/<profile id>/logo
+Authorization: Bearer {{token}}
 
 ### Platform seed listesi
 GET {{host}}/api/platform-profiles

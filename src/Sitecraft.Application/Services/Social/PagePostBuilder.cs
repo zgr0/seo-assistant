@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Sitecraft.Application.Services.Content;
 using Sitecraft.Domain.Entities.Content;
 using Sitecraft.Domain.Entities.Crawling;
 using Sitecraft.Domain.Enums;
@@ -29,6 +30,20 @@ public static class PagePostBuilder
     /// <summary>Haber/blog yazisinda satis acisi yakismaz — yazinin fikri aktarilir.</summary>
     private static readonly string[] ArticleAngles = ["bilgilendirici", "merak_uyandiran"];
 
+    /// <summary>Satis odakli markada paket satis acisiyla acilir.</summary>
+    private static readonly string[] SalesFirstAngles = ["satis_odakli", "bilgilendirici", "merak_uyandiran"];
+
+    /// <summary>Emoji acik markada kancanin basina, aciya gore.</summary>
+    private static readonly Dictionary<string, string> HookEmoji = new()
+    {
+        ["bilgilendirici"] = "📌",
+        ["merak_uyandiran"] = "🤔",
+        ["satis_odakli"] = "✨"
+    };
+
+    /// <summary>Bol emojili markada eylem cagrisinin basina.</summary>
+    private const string CtaEmoji = "👉";
+
     /// <summary>Turkce harfleri hashtag icin ASCII karsiligina cevirir.</summary>
     private static readonly Dictionary<char, char> AsciiMap = new()
     {
@@ -44,7 +59,9 @@ public static class PagePostBuilder
         Page page, PlatformProfile? platform, BrandProfile? brand, int index, PageKind? kind = null)
     {
         var article = (kind ?? PageClassifier.Classify(page)) == PageKind.Article;
-        var angles = article ? ArticleAngles : Angles;
+        var angles = article ? ArticleAngles
+            : brand?.Tone == BrandTone.SatisOdakli ? SalesFirstAngles
+            : Angles;
         index = Math.Max(index, 0);
         var angle = angles[index % angles.Length];
 
@@ -53,9 +70,14 @@ public static class PagePostBuilder
         var round = index / angles.Length;
         var formal = brand?.AddressForm != AddressForm.Sen;
 
+        // Kurumsal ve teknik tonda "Hic dusundun mu?" gibi gundelik soru kancalari kullanilmaz.
+        var casual = brand is null || brand.Tone is BrandTone.Samimi or BrandTone.SatisOdakli;
+        var emoji = brand?.EmojiUsage ?? EmojiUsage.None;
+
         var heading = Heading(page);
         var value = Value(page, round);
-        var cta = Cta(page, platform, formal, angle, article, round / HookCount);
+        var cta = Cta(page, platform, formal, angle, article, round / HookCount, HandleOf(brand, platform));
+        if (emoji == EmojiUsage.Heavy) cta = $"{CtaEmoji} {cta}";
 
         // Baslik gezinme etiketi oldugu icin aciklamadan turediyse govde onu tekrarlamasin.
         if (value is not null && (value.StartsWith(heading, StringComparison.OrdinalIgnoreCase)
@@ -64,7 +86,10 @@ public static class PagePostBuilder
             value = null;
         }
 
-        var body = Body(Hook(angle, heading, formal, round % HookCount), value, cta, platform);
+        var hook = Hook(angle, heading, formal, round % HookCount, casual);
+        if (emoji != EmojiUsage.None) hook = $"{HookEmoji[angle]} {hook}";
+
+        var body = Body(hook, value, cta, platform);
         var hashtags = Hashtags(page, brand, platform);
 
         return new ContentVariant
@@ -111,15 +136,16 @@ public static class PagePostBuilder
     /// Ilk satir kanca — aciya ve tura gore degisir, iddia eklemez. Kalip 0 klasik kancadir;
     /// digerleri basligi degistirmeden cerceveler.
     /// </summary>
-    private static string Hook(string angle, string heading, bool formal, int variant)
+    /// <param name="casual">Gundelik soru kancalari ("isin asli ne?", "Hic dusundun mu?") kullanilabilir mi.</param>
+    private static string Hook(string angle, string heading, bool formal, int variant, bool casual)
     {
         var shortHeading = heading.Length <= MaxQuestionHookChars;
 
         return (angle, variant) switch
         {
             ("merak_uyandiran", 0) => shortHeading ? $"{heading} — nedir, ne işe yarar?" : heading,
-            ("merak_uyandiran", 1) => shortHeading ? $"{heading}: işin aslı ne?" : $"Merak edenler için: {heading}",
-            ("merak_uyandiran", _) => $"Hiç düşündün{(formal ? "üz" : "")} mü? {heading}",
+            ("merak_uyandiran", 1) => shortHeading && casual ? $"{heading}: işin aslı ne?" : $"Merak edenler için: {heading}",
+            ("merak_uyandiran", _) => casual ? $"Hiç düşündün{(formal ? "üz" : "")} mü? {heading}" : $"{heading}: öne çıkan noktalar",
             ("satis_odakli", 1) => $"{(formal ? "Aradığınız" : "Aradığın")} çözüm: {heading}",
             ("satis_odakli", 2) => $"{heading} için doğru adres",
             (_, 1) => $"Yakından bakalım: {heading}",
@@ -170,8 +196,9 @@ public static class PagePostBuilder
         return Clip(string.Join(". ", picked) + ".", MaxValueChars);
     }
 
+    /// <param name="handle">Markanin bu platformdaki hesap adi — link konamayan platformda yonlendirme icin.</param>
     private static string Cta(
-        Page page, PlatformProfile? platform, bool formal, string angle, bool article, int variant)
+        Page page, PlatformProfile? platform, bool formal, string angle, bool article, int variant, string? handle)
     {
         var verbs = (article, angle) switch
         {
@@ -193,10 +220,21 @@ public static class PagePostBuilder
         var verb = verbs[variant % verbs.Length];
 
         // Link paylasimi desteklenmiyorsa (Instagram) URL govdeye konmaz.
-        return platform?.SupportsLinks == true ? $"{verb}: {page.Url}" : $"{verb} — bağlantı profilimizde.";
+        if (platform?.SupportsLinks == true) return $"{verb}: {page.Url}";
+
+        return handle is null ? $"{verb} — bağlantı profilimizde." : $"{verb} — bağlantı @{handle} profilinde.";
     }
 
-    /// <summary>Marka varsayilanlari once; kalan kontenjan sayfa anahtar kelimeleriyle dolar.</summary>
+    /// <summary>Markanin platformdaki hesap adi; yoksa null.</summary>
+    private static string? HandleOf(BrandProfile? brand, PlatformProfile? platform) =>
+        platform is not null && brand?.SocialHandles.TryGetValue(platform.Code, out var handle) == true
+            ? handle
+            : null;
+
+    /// <summary>
+    /// Marka varsayilanlari once, kullanicinin yazdigi gibi (kisa '#ai' ve Turkce karakter dahil);
+    /// kalan kontenjan sayfa anahtar kelimeleriyle dolar. Yasakli ifade tasiyan etiket alinmaz.
+    /// </summary>
     private static List<string> Hashtags(Page page, BrandProfile? brand, PlatformProfile? platform)
     {
         var limit = Math.Min(platform?.MaxHashtags ?? MaxHashtags, MaxHashtags);
@@ -207,15 +245,18 @@ public static class PagePostBuilder
 
         foreach (var tag in brand?.DefaultHashtags ?? [])
         {
-            var normalized = Tag(tag);
-            if (normalized is not null && seen.Add(normalized)) tags.Add(normalized);
+            // Profil kayitta normalize edilir; eski kayitlar icin '#' ve bosluk yine duzeltilir.
+            var normalized = "#" + tag.Trim().TrimStart('#').Replace(" ", string.Empty);
+            if (normalized.Length > 1 && !BrandGuard.IsBannedTag(normalized, brand) && seen.Add(normalized))
+                tags.Add(normalized);
             if (tags.Count == limit) return tags;
         }
 
         foreach (var word in Words(page))
         {
             var normalized = Tag(word);
-            if (normalized is not null && seen.Add(normalized)) tags.Add(normalized);
+            if (normalized is not null && !BrandGuard.IsBannedTag(normalized, brand) && seen.Add(normalized))
+                tags.Add(normalized);
             if (tags.Count == limit) break;
         }
 

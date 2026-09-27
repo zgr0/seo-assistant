@@ -15,6 +15,7 @@ namespace Sitecraft.Application.Services.Social;
 public sealed class SocialKitService(
     IContentRepository content,
     ISiteRepository sites,
+    BrandProfileResolver brands,
     IContentQueue queue,
     IImageGenerator generator,
     SocialImageSettings imageSettings)
@@ -66,11 +67,8 @@ public sealed class SocialKitService(
                 ?? throw new NotFoundException($"Platform '{code}' bulunamadı");
         }
 
-        if (request.BrandProfileId is Guid brandId)
-        {
-            _ = await content.GetBrandProfileAsync(brandId, tenantId, ct)
-                ?? throw new NotFoundException($"Marka profili {brandId} bulunamadı");
-        }
+        // Paketteki butun isler ayni profille yazilir; secilmediyse sitenin varsayilani.
+        var brandProfileId = await brands.ResolveAsync(tenantId, request.SiteId, request.BrandProfileId, ct);
 
         var crawl = await sites.GetLatestCrawlAsync(request.SiteId, ct)
             ?? throw new InvalidOperationException("Bu sitede tarama yok — önce taramayı çalıştırın");
@@ -134,7 +132,7 @@ public sealed class SocialKitService(
                     TenantId = tenantId,
                     SiteId = request.SiteId,
                     PageId = page.Id,
-                    BrandProfileId = request.BrandProfileId,
+                    BrandProfileId = brandProfileId,
                     Type = ContentJobType.SocialKit,
                     PlatformCode = code,
                     Input = input.ToJsonString(),

@@ -19,6 +19,9 @@ internal sealed class SkiaPostTemplates
     private readonly int _width;
     private readonly int _height;
 
+    /// <summary>Marka logosu; yoksa marka satirinda vurgu noktasi cizilir.</summary>
+    private readonly SKImage? _logo;
+
     /// <summary>Olcu birimi: kisa kenar.</summary>
     private readonly float _unit;
 
@@ -29,7 +32,9 @@ internal sealed class SkiaPostTemplates
         _canvas = canvas;
         _source = SKImage.FromBitmap(source);
         _caption = caption;
-        _palette = DesignPalette.ForImage(source, caption.ColorSeed);
+        // Marka rengi verilmisse panel ve vurgu ondan; yoksa fotografin baskin renginden.
+        _palette = DesignPalette.For(caption.Brand, () => DesignPalette.ForImage(source, caption.ColorSeed));
+        _logo = BrandMark.Decode(caption.Brand?.Logo);
         _width = source.Width;
         _height = source.Height;
         _unit = Math.Min(_width, _height);
@@ -52,6 +57,7 @@ internal sealed class SkiaPostTemplates
         finally
         {
             _source.Dispose();
+            _logo?.Dispose();
         }
     }
 
@@ -149,7 +155,9 @@ internal sealed class SkiaPostTemplates
             maxLines: 3, maxHeight: _height * 0.4f, bold: true);
         using var brand = BrandFont(_unit * 0.03f);
 
-        var brandBlock = _caption.BrandLine is { Length: > 0 } ? brand.Size * 1.9f : 0;
+        // Logo rozeti metinden yuksek — basliktan biraz daha uzakta durur.
+        var logoGap = _logo is null ? 0 : brand.Size * 0.45f;
+        var brandBlock = _caption.BrandLine is { Length: > 0 } ? (brand.Size * 1.9f) + logoGap : 0;
         var cardHeight = pad + barHeight + barGap + headline.Height + brandBlock + pad;
         var card = SKRect.Create(margin, _height - margin - cardHeight, cardWidth, cardHeight);
         var radius = _unit * 0.028f;
@@ -173,7 +181,7 @@ internal sealed class SkiaPostTemplates
         y = headline.Draw(_canvas, x, y, DesignPalette.Ink);
 
         if (_caption.BrandLine is { Length: > 0 } brandLine)
-            DrawBrand(brandLine, x, y + (brand.Size * 1.55f), brand, _palette.AccentOnLight, _palette.AccentOnLight);
+            DrawBrand(brandLine, x, y + (brand.Size * 1.55f) + logoGap, brand, _palette.AccentOnLight, _palette.AccentOnLight);
     }
 
     /// <summary>Fotografsiz: desenli marka zemini ve buyuk baslik.</summary>
@@ -297,17 +305,12 @@ internal sealed class SkiaPostTemplates
         return line;
     }
 
-    /// <summary>Basinda vurgu noktasi olan marka satiri; <paramref name="baseline"/> taban cizgisidir.</summary>
-    private void DrawBrand(string text, float x, float baseline, SKFont font, SKColor color, SKColor dot)
-    {
-        var radius = font.Size * 0.24f;
-
-        using var paint = new SKPaint { IsAntialias = true, Color = dot };
-        _canvas.DrawCircle(x + radius, baseline - (font.Size * 0.36f), radius, paint);
-
-        paint.Color = color;
-        _canvas.DrawText(text, x + (radius * 2) + (font.Size * 0.45f), baseline, SKTextAlign.Left, font, paint);
-    }
+    /// <summary>
+    /// Basinda logo rozeti (yoksa vurgu noktasi) olan marka satiri; <paramref name="baseline"/>
+    /// taban cizgisidir.
+    /// </summary>
+    private void DrawBrand(string text, float x, float baseline, SKFont font, SKColor color, SKColor dot) =>
+        BrandMark.Draw(_canvas, _logo, text, x, baseline, font, color, dot);
 
     /// <summary>Kaynagi hedef dikdortgene ortadan kirpip doldurur (CSS object-fit: cover).</summary>
     private void DrawCover(SKRect target)

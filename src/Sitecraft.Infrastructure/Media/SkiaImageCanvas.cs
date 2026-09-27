@@ -57,10 +57,10 @@ public sealed class SkiaImageCanvas(ILogger<SkiaImageCanvas> logger) : IImageCan
         }
     }
 
-    public GeneratedImage Card(string aspectRatio, string seed)
+    public GeneratedImage Card(string aspectRatio, string seed, BrandStyle? brand = null)
     {
         var (width, height) = TargetSize(aspectRatio);
-        var palette = DesignPalette.FromSeed(seed);
+        var palette = DesignPalette.For(brand, () => DesignPalette.FromSeed(seed));
         var (from, to) = (palette.Deep, palette.Dark);
 
         using var surface = SKSurface.Create(new SKImageInfo(width, height));
@@ -83,6 +83,60 @@ public sealed class SkiaImageCanvas(ILogger<SkiaImageCanvas> logger) : IImageCan
         }
 
         return Encode(surface, width, height);
+    }
+
+    /// <summary>
+    /// Kaynak bundan buyukse cozulmez: birkac MB'lik bir PNG gigabaytlarca piksel alanina acilabilir.
+    /// </summary>
+    public const int MaxLogoSourceSide = 8000;
+
+    /// <summary>Bundan kucuk logo gorselde okunmaz.</summary>
+    public const int MinLogoSide = 16;
+
+    public GeneratedImage? NormalizeLogo(byte[] source, int maxSide)
+    {
+        try
+        {
+            using var data = SKData.CreateCopy(source);
+            using var codec = SKCodec.Create(data);
+            if (codec is null) return null;
+
+            // Boyut basliktan okunur — piksel cozulmeden once devasa kaynak elenir.
+            var info = codec.Info;
+            if (codec.EncodedFormat is not (SKEncodedImageFormat.Png or SKEncodedImageFormat.Jpeg or SKEncodedImageFormat.Webp)
+                || Math.Min(info.Width, info.Height) < MinLogoSide
+                || Math.Max(info.Width, info.Height) > MaxLogoSourceSide)
+            {
+                logger.LogDebug("Logo uygun değil: {Format} {Width}x{Height}", codec.EncodedFormat, info.Width, info.Height);
+                return null;
+            }
+
+            using var bitmap = SKBitmap.Decode(codec);
+            if (bitmap is null) return null;
+
+            var scale = Math.Min(1f, (float)maxSide / Math.Max(bitmap.Width, bitmap.Height));
+            var width = Math.Max(1, (int)Math.Round(bitmap.Width * scale));
+            var height = Math.Max(1, (int)Math.Round(bitmap.Height * scale));
+
+            // Seffaf zemin korunur: logo koyu ve acik panellerin ustune ayni dosyadan basilir.
+            using var surface = SKSurface.Create(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
+            surface.Canvas.Clear(SKColors.Transparent);
+
+            using var image = SKImage.FromBitmap(bitmap);
+            using var paint = new SKPaint { IsAntialias = true };
+            surface.Canvas.DrawImage(
+                image, SKRect.Create(0, 0, width, height),
+                new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear), paint);
+
+            using var snapshot = surface.Snapshot();
+            using var png = snapshot.Encode(SKEncodedImageFormat.Png, 100);
+            return new GeneratedImage(png.ToArray(), "image/png", width, height, string.Empty);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Logo işlenemedi");
+            return null;
+        }
     }
 
     /// <summary>Platformlarin onerdigi paylasim olculeri.</summary>
